@@ -3,15 +3,17 @@
 // 6.7: the declarations, of which rcc-v2 takes the declaration
 // specifiers static, extern, typedef, void and the type specifiers of
 // the integer types from char to unsigned long long, in any order and
-// spelling, a typedef name and an enum specifier, the pointers to int
-// and to pointers and the arrays of either, the declarators of a
-// function and of an object, the declaration in a block and in a for's
-// first clause of objects of those types, each with an initializer or
-// without, a local array's without one, the type definitions, the type
-// name of a cast and of sizeof, and the initializer of an object of
-// static storage; it refuses the rest as not yet.  rcc reads more of
-// each than rcc-v2 does, so each is read as far as rcc would read it,
-// and what rcc would take is refused before an error rcc would not say.
+// spelling, a typedef name, a struct or union specifier,
+// parse-records.cc's, and an enum specifier, the pointers to int, to
+// pointers, to records and to the arrays of int or of pointers, the
+// declarators of a function and of an object, the declaration in a
+// block and in a for's first clause of objects of those types, each
+// with an initializer or without, a local array's without one, the type
+// definitions, the type name of a cast and of sizeof, and the
+// initializer of an object of static storage; it refuses the rest as
+// not yet.  rcc reads more of each than rcc-v2 does, so each is read as
+// far as rcc would read it, and what rcc would take is refused before
+// an error rcc would not say.
 
 #include "parse-common.hh"
 
@@ -426,37 +428,18 @@ refuse_fixed_underlying_type(const parser_t &p)
         not_yet(peek(p), "enum with a fixed underlying type");
 }
 
-// The type an enum's tag without a list names, rcc's tagged_type(): the
-// innermost declaration of the tag in scope, 6.7.3.4p13, which is an
-// error before the enumeration's list, p2, said at the tag.  GNU C's
-// forward declaration, enum e;, is not taken.
-type_t
-tagged_type(const parser_t &p, const token_t &tag)
-{
-    for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope)
-        if (const auto it = scope->tags.find(tag.text); it != scope->tags.end())
-            return it->second;
-
-    fail(tag, "enum " + quoted(tag.text) + " used before its list");
-}
-
 // The tag of an enum whose list follows, declared in the current scope
-// from the list's '{' on, 6.2.1p7, as the incomplete type it is until
-// the '}', 6.7.3.4p5, rcc's open_enum_tag(): a not-yet type, whose every
-// use the list makes is refused by its words, refuse_not_yet_type().  A
-// second list of the tag in one scope is valid where it defines the
-// same content, p1, which rcc does not compare, so it is not yet in
-// rcc's words, at the tag.
+// from the list's '{' on, 6.2.1p7, by tagged_type(), as the incomplete
+// type it is until the '}', 6.7.3.4p5, rcc's open_enum_tag(): a not-yet
+// type, whose every use the list makes is refused by its words,
+// refuse_not_yet_type().
 void
-open_enum_tag(parser_t &p, const token_t &tag)
+open_enum_tag(parser_t &p, const token_t &keyword, const token_t &tag)
 {
-    auto &tags = p.scopes.back().tags;
-    if (tags.contains(tag.text))
-        not_yet(tag, "enum " + quoted(tag.text) + " defined again");
+    tagged_type(p, keyword, tag, tag_use_t::defines);
 
-    tags.emplace(tag.text,
-                 make_not_yet(++p.identities, { "enum " + quoted(tag.text) +
-                                                " in its own list" }));
+    tag_in(p.scopes.back(), tag.text)->type = make_not_yet(
+        ++p.identities, { "enum " + quoted(tag.text) + " in its own list" });
 }
 
 // enum, then a tag, an enumerator list in braces, or both, 6.7.3.3p1,
@@ -466,9 +449,11 @@ open_enum_tag(parser_t &p, const token_t &tag)
 // a result, a cast, sizeof, a switch and the arithmetic of one are its
 // integer type's; its constants take the types and the values of p10,
 // p12 and p15, and the tag, in the current scope, the enumerated type.
-// A tag without a list names the type its list defined,
-// tagged_type()'s.  GNU C's attributes after the keyword are not yet,
-// and so are those after the list, which the specifiers refuse.
+// A tag without a list names the type its list defined, and is an error
+// before the list, 6.7.3.4p2, tagged_type()'s: GNU C's forward
+// declaration, enum e;, is not taken.  GNU C's attributes after the
+// keyword are not yet, and so are those after the list, which the
+// specifiers refuse.
 type_t
 enum_specifier(parser_t &p)
 {
@@ -477,19 +462,14 @@ enum_specifier(parser_t &p)
         not_yet(peek(p), quoted(peek(p).text) + " in an enum specifier");
 
     refuse_fixed_underlying_type(p);
-    const token_t *tag = nullptr;
-    if (peek(p).kind != tok_t::lbrace)
-        tag =
-            &expect(p, tok_t::identifier,
-                    "expected identifier or '{' after " + quoted(keyword.text));
-
+    const token_t *tag = optional_tag(p, keyword);
     refuse_fixed_underlying_type(p);
 
     if (peek(p).kind != tok_t::lbrace)
-        return tagged_type(p, *tag);
+        return tagged_type(p, keyword, *tag, tag_use_t::refers);
 
     if (tag)
-        open_enum_tag(p, *tag);
+        open_enum_tag(p, keyword, *tag);
 
     advance(p);
     const std::vector< enumerator_t > list = enumerator_list(p);
@@ -499,7 +479,7 @@ enum_specifier(parser_t &p)
     complete_constants(p, list, t);
 
     if (tag)
-        p.scopes.back().tags.at(tag->text) = t;
+        tag_in(p.scopes.back(), tag->text)->type = t;
 
     return t;
 }
@@ -531,9 +511,10 @@ refuse_static_array(const token_t &name, const type_t &t)
 // them, 6.7.2p1, read as rcc reads them, up to the first token that is
 // none.  A typedef name in scope is the whole type specifier,
 // 6.7.3.1p2, where it is the first: after another, an identifier is the
-// declarator's name, so unsigned T declares a T.  So is an enum
-// specifier, enum_specifier()'s, which another may stand neither before
-// nor after.  Each type specifier is refused where it cannot join those
+// declarator's name, so unsigned T declares a T.  So is a struct, union
+// or enum specifier, struct_or_union_specifier()'s and
+// enum_specifier()'s, which another may stand neither before nor
+// after.  Each type specifier is refused where it cannot join those
 // before it, and a storage class where one came before it, 6.7.2p2, in
 // rcc's words.  Any other specifier is not yet where it stands, and so
 // is a reserved identifier in place of the first type specifier, which
@@ -565,13 +546,14 @@ declaration_specifiers(parser_t &p)
             continue;
         }
 
-        if (t.kind == tok_t::kw_enum) {
+        if (next_is(p, { tok_t::kw_struct, tok_t::kw_union, tok_t::kw_enum })) {
             if (first)
                 fail(t, "cannot combine " + quoted(t.text) +
                             " with the type specifiers before it");
 
             first = &t;
-            whole = enum_specifier(p);
+            whole = t.kind == tok_t::kw_enum ? enum_specifier(p) :
+                                               struct_or_union_specifier(p);
             tagged = true;
             continue;
         }
@@ -612,11 +594,11 @@ refuse_parenthesized(const parser_t &p)
 // The pointers before a declarator's name, 6.7.7.2, rcc's pointer():
 // each '*' a pointer to the type so far, so int **pp is a pointer to a
 // pointer to int.  The pointees rcc-v2 takes are the integer types, the
-// enumerated ones among them, the pointers, and the arrays a typedef
-// name names: a pointer to void, to a function, which a typedef name
-// may name, or to an enum in its own list, which rcc takes, is not yet
-// at its '*', and so is a qualifier after one, which qualifies the
-// pointer, p1.
+// enumerated ones among them, the pointers, the arrays a typedef name
+// names, and the records, complete or not, 6.2.5p27, laid out or not:
+// a pointer to void, to a function, which a typedef name may name, or
+// to an enum in its own list, which rcc takes, is not yet at its '*',
+// and so is a qualifier after one, which qualifies the pointer, p1.
 type_t
 pointer(parser_t &p, type_t t)
 {
@@ -889,7 +871,9 @@ parameter_declaration(parser_t &p)
 // operand is a constant.  The parameter's leaf is a local's, its slot
 // numbered by its place in the list, so the parameters of a definition
 // are its first locals, and its body's are numbered after them
-// (docs/typed-tree.md 4.5).
+// (docs/typed-tree.md 4.5); a record parameter has none, since a
+// definition of one is not yet, function_definition()'s, before its
+// body.
 void
 declare_parameter(parser_t &p, const parameter_t &param, int index)
 {
@@ -900,9 +884,15 @@ declare_parameter(parser_t &p, const parameter_t &param, int index)
     if (const auto it = scope.names.find(param.name->text);
         it != scope.names.end())
         fail(*param.name,
-             constant_of(*it->second.operand.node) ?
+             it->second.operand.node && constant_of(*it->second.operand.node) ?
                  "redefinition of " + quoted(param.name->text) :
                  "redefinition of parameter " + quoted(param.name->text));
+
+    if (record_in(param.type)) {
+        scope.names.emplace(param.name->text,
+                            symbol_t { { param.type, std::nullopt } });
+        return;
+    }
 
     const operand_t local { param.type, make_local(index, view_of(param.type),
                                                    sign_of(param.type)) };
@@ -1136,6 +1126,7 @@ init_declarator(parser_t &p,
                 std::vector< stmt_t > &items)
 {
     refuse_declarator_tail(p);
+    refuse_record_object(d.name, d.type);
 
     if (is< array_t >(d.type)) {
         local_array(p, d, items);
@@ -1197,6 +1188,7 @@ static_local(parser_t &p, const declarator_t &d)
     refuse_declarator_tail(p);
     refuse_static_pointer(d.name, d.type);
     refuse_static_array(d.name, d.type);
+    refuse_record_object(d.name, d.type);
 
     scope_t &scope = p.scopes.back();
     if (scope.names.contains(d.name.text))
@@ -1280,6 +1272,7 @@ linked_declaration(parser_t &p, const declarator_t &d)
     refuse_declarator_tail(p);
     refuse_static_pointer(d.name, d.type);
     refuse_static_array(d.name, d.type);
+    refuse_record_object(d.name, d.type);
 
     if (peek(p).kind == tok_t::assign)
         fail(peek(p), quoted(d.name.text) +
@@ -1297,8 +1290,10 @@ linked_declaration(parser_t &p, const declarator_t &d)
         fail(d.name, "redefinition of " + quoted(d.name.text));
 
     if (entity) {
-        if (!compatible(entity->type, d.type))
+        if (!compatible(entity->type, d.type)) {
+            refuse_tag_twins(d.name, entity->type, d.type);
             fail(d.name, "conflicting types for " + quoted(d.name.text));
+        }
 
         require_linkage(d.name, entity->external, external);
         entity->type = composite(entity->type, d.type);
@@ -1364,9 +1359,11 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     auto &names = p.scopes.back().names;
     const auto earlier = names.find(d.name.text);
     if (earlier != names.end() && earlier->second.type_name) {
-        if (!same_type(earlier->second.operand.type, d.type))
+        if (!same_type(earlier->second.operand.type, d.type)) {
+            refuse_tag_twins(d.name, earlier->second.operand.type, d.type);
             fail(d.name, "redefinition of typedef " + quoted(d.name.text) +
                              " with another type");
+        }
 
         return;
     }

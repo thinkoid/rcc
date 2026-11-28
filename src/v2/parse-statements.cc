@@ -44,7 +44,7 @@ void_return(parser_t &p, const token_t &keyword, operand_t value)
     expect(p, tok_t::semicolon, "expected ';' after return statement");
 
     std::vector< stmt_t > items;
-    items.push_back(make_expr_stmt(discarded(std::move(value))));
+    items.push_back(make_expr_stmt(discarded(keyword, std::move(value))));
     items.push_back(make_return_void());
 
     return make_block(std::move(items));
@@ -182,17 +182,19 @@ jump_statement(parser_t &p)
 // expression may be void, a void call's, and is converted as any
 // operand whose value is read, 6.3.2.1p2, so x; is the load of x, as in
 // rcc; a function designator decays to its function's address there,
-// 6.3.2.1p4, which is not yet.
+// 6.3.2.1p4, which is not yet, and a record's value is not yet, at the
+// statement's first token.
 stmt_t
 expression_statement(parser_t &p)
 {
     if (accept(p, tok_t::semicolon))
         return make_null();
 
+    const token_t &start = peek(p);
     operand_t e = expression(p);
     expect(p, tok_t::semicolon, "expected ';' after expression");
 
-    return make_expr_stmt(discarded(std::move(e)));
+    return make_expr_stmt(discarded(start, std::move(e)));
 }
 
 // 6.8.1, a then part and an else part, below.
@@ -353,8 +355,8 @@ for_statement(parser_t &p)
     expect(p, tok_t::semicolon, "expected ';' after for condition");
 
     stmt_t step = make_null();
-    if (peek(p).kind != tok_t::rparen)
-        step = make_expr_stmt(discarded(expression(p)));
+    if (const token_t &start = peek(p); start.kind != tok_t::rparen)
+        step = make_expr_stmt(discarded(start, expression(p)));
 
     expect(p, tok_t::rparen, "expected ')' after for clauses");
 

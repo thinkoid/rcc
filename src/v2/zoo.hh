@@ -123,6 +123,17 @@ struct place_t
     W where;
 };
 
+// An object of a struct or a union type, 6.2.5p21, at the where W, the
+// object through a pointer, a place of no view: no row reads its value,
+// which no record has in this language, rcc's refuse_record_value(), and
+// & takes its address.  No access reads it whole, so its where reads no
+// bytes of its own, a size of 0.
+template< typename W >
+struct record_place_t
+{
+    W where;
+};
+
 // What a place holds, 6.3.2.1p2: the object read at its view, which is
 // no place, extended to 32 bits by S where V is narrow; a widening's
 // builder may read a where at another sign, the type it converts from.
@@ -779,6 +790,16 @@ inline view_t
 view_of(const call_void_t &)
 {
     throw std::logic_error("v2: the view of a void call");
+}
+
+// A record place has no view, and the parser reads no value of it,
+// refuse_record_operand(): asked for its view, it is a tree the parser
+// does not make.
+template< typename W >
+view_t
+view_of(const record_place_t< W > &)
+{
+    throw std::logic_error("v2: the view of a record");
 }
 
 template< binary_op_t op, typename W, view_t V, view_t O, typename R >
@@ -1485,6 +1506,13 @@ int
 valid_of(const place_t< W, V, S > &, sign_t)
 {
     throw std::logic_error("v2: a place read without its lvalue conversion");
+}
+
+template< typename W >
+int
+valid_of(const record_place_t< W > &, sign_t)
+{
+    throw std::logic_error("v2: the value of a record");
 }
 
 inline int

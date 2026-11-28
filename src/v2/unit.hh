@@ -24,15 +24,14 @@ namespace rcc {
 // declaration, a later one and the definition finding the same entry:
 // its name; whether its linkage is external, 6.2.2p5, so its symbol is
 // global, which a static one's is not, p3; the view of each of its
-// parameters, in order, which a definition's body reads as its first
-// locals, numbered from 0, and all its frame needs of one, a slot and
-// the store of its argument at that view, since the body reads a
-// parameter through its place, which has its sign (docs/typed-tree.md
-// principle 9); and its body, a compound statement, which is a
-// statement, 6.9.2, where the unit defines it.  A later declaration of
-// a compatible type has the same views, 6.7.1p5.  A function only
-// declared writes nothing, since the assembler leaves its symbol to the
-// link.
+// parameters, in order, set where the unit defines it, which its body
+// reads as its first locals, numbered from 0, and all its frame needs
+// of one, a slot and the store of its argument at that view, since the
+// body reads a parameter through its place, which has its sign
+// (docs/typed-tree.md principle 9); and its body, a compound statement,
+// which is a statement, 6.9.2, where the unit defines it.  A function
+// only declared writes nothing, since the assembler leaves its symbol to
+// the link, and has no views.
 struct function_decl_t
 {
     std::string name;

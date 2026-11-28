@@ -10,9 +10,12 @@ Of the design the tree has a thin line through every joint: a unit of
 functions and of objects, declared and defined in any order, `static`,
 `extern` or neither, at file scope or a block's `static` and `extern`;
 typedef names and enumerations with their tags and constants, declared
-at file scope or in a block and read wherever a type is; the objects
-of the integer types from `char` to `unsigned long long`, initialized
-by an integer constant expression or not, read and assigned in every
+at file scope or in a block and read wherever a type is; structs and
+unions, their tags in every scope and their layout, and pointers to
+them, compared, assigned, passed, returned, and stepped by a constant
+at any size and by a variable at 2, 4 and 8 bytes; the objects of the
+integer types from `char` to `unsigned long long`, initialized by an
+integer constant expression or not, read and assigned in every
 expression, defined before their use, after it or nowhere in the unit,
 their data written after the functions; the functions of a result of
 any integer type, a pointer or `void` and of parameters of any integer
@@ -709,6 +712,16 @@ S >`.
   `[x0, w1, sxtw #2]`. Its declaration is `array_decl_t`, its slot its
   size at its element's alignment. An array parameter is a pointer to
   its element.
+- `*p` of a pointer to a struct or a union is a place of no view,
+  `record_place_t< indirect_t >`: `&` takes its address, `&*p` the
+  pointer's value, `sizeof` its type, and no row reads its value. The
+  parser refuses the value in rcc's words, an error where an operator
+  wants a scalar and rcc's not yet for its effect, an assignment of
+  one among them. Arithmetic on a pointer to a record steps by the
+  record's size: a constant index is a displacement at any size, a
+  variable one is the form's scale at 2, 4 and 8 bytes, and at any
+  other size not yet, as the difference of pointers to a record of one
+  byte is.
 
 ### 4.3 Constants
 
@@ -901,6 +914,16 @@ technique.
   enumerator's. A function or an object declared again takes the
   composite of its two types, which for an enumerated type and its
   integer type is the integer type.
+- A struct or a union is the parser's `record_t`, rcc's, kept in a
+  list of the parser that the record types point into, its tag in the
+  scope's tags beside the enumerations', its layout rcc's `lay_out()`,
+  bit-fields included, ported in `parse-records.cc`. No row reads a C
+  type (principle 9), so nothing of a record outlives the parse but
+  the sizes and the offsets the parser moves into nodes. A record
+  object is not yet, refused at its name; a record parameter, result
+  and argument are rcc's own not yets, and a function's entry takes
+  its parameters' views at its definition, since a declaration may
+  name a record parameter, which has no view.
 - A block's `static` object is the unit's too. Its entry is made
   where its declaration is parsed, under its label: the function's
   name and its own, `f.s`, and from the second of the name in the
@@ -1093,6 +1116,8 @@ each became.
 | `decayed()` | the parser's operand of an array: its type the decay's, its node the address |
 | `array_declarator()`, `array_count()`, `array_size()` | the parser's, ported |
 | `allocate()` by a size and an alignment | the row of `array_decl_t` |
+| `lay_out()`, `bit_field_place()`, `access_unit()`, `tagged_type()` | the parser's, ported (`parse-records.cc`) |
+| `address()` of an lvalue of a record | the where of `record_place_t< indirect_t >` |
 | `pointed()` of a dereference's operand | each target's `address()` of the where `indirect_t`: the pointer's value, the base |
 | `calls_within()` | aarch64's summary of that name, each node's of its parts, an erased one's through its handle |
 | `pointed()`, `constant_indexed()`, `indexed()`, `index_base()`, `cast_sum()` | each target's `pointed()`, an entry point with niches on `gep_t` and `bitcast_t` |
@@ -1207,10 +1232,13 @@ rows invented for the purpose.
   zoo before the three took 30.8. The rows of the stride 1 add two
   lines and nineteen models: 814,000 functions and 15.2 GB.
 - GNU's `a ?: b`, which is not yet.
-- Of the declarations: a typedef name of an array or of a record; a
-  function declared through a typedef name; an enum's fixed underlying
-  type, as in rcc, and its attributes; a pointer to an enum within its
-  own list, which rcc takes.
+- Of the declarations: a function declared through a typedef name; an
+  enum's fixed underlying type, as in rcc, and its attributes; a
+  pointer to an enum within its own list, which rcc takes.
+- Of the records: their objects and the copy, records of static
+  storage, the access of a bit-field, a member of an array type and
+  arrays of records, and a variable index into records of a size that
+  is no scale.
 - The rest of the pointers: a step and a compound assignment through a
   pointer; an index of an object under a cast to its own type or under
   a chain of casts, and under an operator beside a constant; on

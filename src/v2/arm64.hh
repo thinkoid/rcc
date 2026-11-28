@@ -1086,6 +1086,13 @@ calls_within(const state_t &s, const place_t< W, V, S > &p)
     return calls_within(s, p.where);
 }
 
+template< typename W >
+bool
+calls_within(const state_t &s, const record_place_t< W > &p)
+{
+    return calls_within(s, p.where);
+}
+
 template< typename W, view_t V, sign_t S >
 bool
 calls_within(const state_t &s, const load_t< W, V, S > &l)

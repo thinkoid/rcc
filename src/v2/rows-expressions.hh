@@ -34,6 +34,16 @@ value(S &, const place_t< W, V, O > &, unsigned = 0)
     throw std::logic_error("v2: a place read without its lvalue conversion");
 }
 
+// A record has no value in this language, rcc's refuse_record_value(),
+// which the parser says: a record place asked for one is a tree the
+// parser does not make.
+template< typename S, typename W >
+value_t
+value(S &, const record_place_t< W > &, unsigned = 0)
+{
+    throw std::logic_error("v2: the value of a record");
+}
+
 // A right operand kept as a top_t is the node it holds, whose own row
 // writes it through the handle.
 template< typename S, family_t F >

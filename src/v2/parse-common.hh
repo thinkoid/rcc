@@ -20,6 +20,7 @@
 #include "unit.hh"
 
 #include <cstddef>
+#include <deque>
 #include <initializer_list>
 #include <optional>
 #include <string>
@@ -33,17 +34,19 @@ namespace rcc {
 // What the parser holds of an expression: its C type, which the
 // productions read; the node built for it, or none for a function
 // designator, whose value, the function's address, 6.3.2.1p4, rcc-v2
-// does not compile yet; the identifier the expression is, through
-// parentheses, 6.5.2p6, or null, for the diagnostics that name it and
-// for the function a call names; and whether it is a constant reached
-// through a signed overflow, 6.6p4, the mark every operator's
-// production sets, overflowed(), and a constant expression reads,
-// warn_overflowed(); whether it is the result of *, through
-// parentheses, a place through a pointer, whose step and compound
-// assignment are not yet; and the token of a cast of an object to a
-// type of its width, narrower than an int or an unsigned, through
-// parentheses and the casts that widen it, or null, and whether it is
-// one change of the object's sign alone, for the not yet of its index,
+// does not compile yet, and for a parameter of a record type in a
+// declaration, which no body reads, since a definition of one is not
+// yet; the identifier the expression is, through parentheses, 6.5.2p6,
+// or null, for the diagnostics that name it and for the function a call
+// names; and whether it is a constant reached through a signed
+// overflow, 6.6p4, the mark every operator's production sets,
+// overflowed(), and a constant expression reads, warn_overflowed();
+// whether it is the result of * of a scalar, through parentheses, a
+// place through a pointer, whose step and compound assignment are not
+// yet; the token of a cast of an object to a type of its width,
+// narrower than an int or an unsigned, through parentheses and the
+// casts that widen it, or null, and whether it is one change of the
+// object's sign alone, for the not yet of its index,
 // widened_index()'s; and the type of an array, or none: an expression
 // of an array's type is converted to a pointer to its first element,
 // 6.3.2.1p3, which is its C type here, read by every production, and
@@ -77,17 +80,31 @@ struct symbol_t
     bool type_name = false;
 };
 
+// What a scope holds of a tag it declares, rcc's tag_t: the type it
+// names; the keyword that declared it, struct, union or enum, of which
+// every other use of the tag is, 6.7.3.4p2; whether a list has defined
+// its content; and the record of a struct or a union, which the parser
+// completes in place at its list's '}', p5, or null for an enum.  An
+// enum's type is the enumerated type, or while its list is read the
+// type of the enum in its own list.
+struct tag_t
+{
+    type_t type;
+    tok_t keyword;
+    bool defined;
+    record_t *record = nullptr;
+};
+
 // A scope, 6.2.1p4: the file's, a block's or a parameter list's.  It
 // holds the ordinary identifiers it declares, 6.2.3p1, each a view into
 // the tokens and what the scope holds of it, the file's its typedef
 // names and enumeration constants alone, its functions' and its
-// objects' names being parser_t's; and the tags of the enumerations it
-// defines, each the enumerated type, or while its list is read the
-// type of the enum in its own list, 6.7.3.4p5.
+// objects' names being parser_t's; and the tags it declares, of
+// structs, unions and enums, in a name space of their own.
 struct scope_t
 {
     std::unordered_map< std::string_view, symbol_t > names = { };
-    std::unordered_map< std::string_view, type_t > tags = { };
+    std::unordered_map< std::string_view, tag_t > tags = { };
 };
 
 // What the parser holds of a function's name in the file's scope,
@@ -167,9 +184,13 @@ struct open_switch_t
 // block's static objects of each name, which their labels read,
 // static_label(); the objects a block declared extern first, of
 // external linkage, which no declaration at file scope has declared
-// yet, unit_entity()'s; and the count of the identities the parser has
+// yet, unit_entity()'s; the count of the identities the parser has
 // given the enumerated types and the types of an enum in its own list,
-// 6.2.5p21, which identifies the next.
+// 6.2.5p21, which identifies the next; and the structs and the unions
+// the file declares, in a deque, whose elements never move, so a
+// record_type_t made before a list completes its record points to the
+// completed record, 6.7.3.4p5: no row reads a C type, so they die with
+// the parse (docs/typed-tree.md principle 9).
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -194,6 +215,7 @@ struct parser_t
     std::unordered_map< std::string_view, int > statics = { };
     std::unordered_map< std::string_view, object_name_t > block_entities = { };
     int identities = 0;
+    std::deque< record_t > records = { };
 };
 
 //
@@ -281,16 +303,23 @@ void refuse_not_yet_type(const token_t &at, const type_t &t);
 // error at the token, rcc's require_value().
 void require_value(const token_t &at, const operand_t &e);
 
-// An operand whose value is read, rcc's rvalue(): a void one is none,
-// require_value()'s, an error at the token; a function designator's
-// value is its function's address, 6.3.2.1p4, which is not yet; any
-// other is its node, the lvalue converted, 6.3.2.1p2.
+// An operand whose value an operator reads, judged before its type is,
+// rcc's rvalue()'s judgements: not void, require_value()'s, and no
+// record, refuse_record_operand()'s, each an error at the token.
+void require_scalar(const token_t &at, const operand_t &e);
+
+// An operand whose value is read, rcc's rvalue(): a void one is none
+// and a record is none of a scalar, require_scalar()'s, each an error at
+// the token; a function designator's value is its function's address,
+// 6.3.2.1p4, which is not yet; any other is its node, the lvalue
+// converted, 6.3.2.1p2.
 expr_t rvalue(const token_t &at, operand_t e);
 
 // An operand evaluated for its effect alone, 6.8.4p2, rcc's
-// discarded(): it may be void, and a function designator, which would
-// decay to its function's address, is not yet.
-expr_t discarded(operand_t e);
+// discarded(): it may be void; a record's value it would read is
+// refuse_record_value()'s at the token; and a function designator,
+// which would decay to its function's address, is not yet.
+expr_t discarded(const token_t &at, operand_t e);
 
 // The conversion of the value of e, an operand of a value, to the type
 // t, 6.3.1.3, as a node, whatever the two types: its builder is handed
@@ -326,11 +355,13 @@ bool is_null_pointer_constant(const operand_t &e);
 
 // A value converted to the type t as if by assignment, 6.5.17.2p2,
 // rcc's assignment_conversion(): a void value is none,
-// require_value()'s; an integer converts to a pointer only as a null
-// pointer constant, a pointer to no integer, and a pointer to a pointer
-// to a compatible type alone, 6.5.17.2p1, a function designator being a
-// pointer to its function, each an error at the token; any other value
-// is converted to t, convert_to()'s.  Returns the value's node.
+// require_value()'s; a record converts to no scalar, and no scalar to a
+// record, require_record_conversion()'s; an integer converts to a
+// pointer only as a null pointer constant, a pointer to no integer, and
+// a pointer to a pointer to a compatible type alone, 6.5.17.2p1, a
+// function designator being a pointer to its function, each an error at
+// the token; any other value is converted to t, convert_to()'s.
+// Returns the value's node.
 expr_t assignment_conversion(const token_t &at, operand_t e, const type_t &t);
 
 //
@@ -407,10 +438,11 @@ operand_t expression(parser_t &);
 
 // What the parser holds of the declaration specifiers: the storage
 // class, static, extern, typedef or none; the first type specifier's
-// token, a typedef name's or an enum specifier's among them; the type;
-// and whether the type specifier is an enum specifier, which declares
-// its tag or its constants, so that a declaration of it alone, enum e {
-// A };, declares something, 6.7.1p2.
+// token, a typedef name's or a tagged type's specifier's among them; the
+// type; and whether the type specifier is a struct, union or enum
+// specifier, which declares its tag, its record or its constants, so that
+// a declaration of it alone, struct s; or enum e { A };, declares
+// something, 6.7.1p2.
 struct specifiers_t
 {
     const token_t *storage_class;
@@ -483,6 +515,88 @@ void refuse_static_array(const token_t &name, const type_t &t);
 // initialize(): an integer constant expression, 6.7.11p4, folded, which
 // is the entry's value.
 void initialize(parser_t &, const type_t &t, std::size_t index);
+
+// 6.7.3.2, 6.7.3.4, parse-records.cc
+
+// How a struct, union or enum specifier uses its tag, 6.7.3.4, rcc's
+// tag_use_t: a list defines the tag's content, p10; struct S; declares
+// the tag alone, p11; any other mention refers to the type the tag
+// names, p12, p13.
+enum class tag_use_t { defines, declares, refers };
+
+// The tag after struct, union or enum, or null where the list follows
+// at once, rcc's optional_tag(); a specifier with neither is an error.
+const token_t *optional_tag(parser_t &, const token_t &keyword);
+
+// The type a tag names, 6.7.3.4, rcc's tagged_type().  A list and
+// struct S; declare the tag in the current scope, p10, p11, and a tag
+// declared there already is the same type, p4.  Any other mention is the
+// type of the innermost declaration of the tag in scope, p13, or without
+// one declares an incomplete struct or union in the current scope, p12.
+// The tag of another kind of type is an error, p1, and so is an enum
+// without its list before the enum is declared, p2.  A second list for
+// one tag in one scope is valid when it defines the same content, p1,
+// which rcc does not compare, so it is not yet.  A tag first declared in
+// a parameter list is declared in the list's scope, 6.2.1p4, and ends
+// with it, or with the body of a definition.
+type_t tagged_type(parser_t &,
+                   const token_t &keyword,
+                   const token_t &tag,
+                   tag_use_t use);
+
+// The tag the scope declares by the name, or null.
+tag_t *tag_in(scope_t &scope, std::string_view name);
+
+// struct or union, then a tag, a member list in braces, or both,
+// 6.7.3.2p1, rcc's struct_or_union_specifier().  A tag followed by ; is
+// the declaration of the tag alone, 6.7.3.4p11; without a list a tag
+// names the type tagged_type() finds.
+type_t struct_or_union_specifier(parser_t &);
+
+// The words a diagnostic names a record by, rcc's record_words(): struct
+// 'point', or untagged union for one declared without a tag.
+std::string record_words(const record_t &r);
+
+// The record a type is, or null, rcc's record_in().
+const record_t *record_in(const type_t &t);
+
+// A type rcc declares and does not use yet stands wherever nothing needs
+// its object, and a use that needs it is refused by the type's own
+// words, rcc's require_honoured(): a not-yet type, and a record whose
+// list holds a construct rcc does not lay out yet.
+void require_honoured(const token_t &at, const type_t &t);
+
+// rcc compares no two records' members, so a mismatch of two types that
+// holds two distinct complete records of one kind and one tag is not
+// yet, rcc's refuse_tag_twins(): C23 may make the two compatible,
+// 6.2.7p1.  Any other mismatch is the caller's error.
+void refuse_tag_twins(const token_t &at, const type_t &a, const type_t &b);
+
+// A record converted to the value stored in its object, 6.3.2.1p2, where
+// a record is wanted or for its effect, rcc's refuse_record_value(): its
+// value is not yet, and an incomplete record has none to read, an error,
+// p2.
+void refuse_record_value(const token_t &at, const type_t &t);
+
+// Every operator that reads its operand's value asks a scalar of it, or
+// an arithmetic or an integer type, and so does a condition, 6.5.4.3p1,
+// 6.5.7p2, 6.5.14p2, 6.5.15p2, 6.5.16p2, 6.8.5.2p1, 6.8.6.1p2, rcc's
+// refuse_record_operand(): a record there is the error of the
+// constraint, not a construct rcc lacks.
+void refuse_record_operand(const token_t &at, const type_t &t);
+
+// No record converts as if by assignment to a scalar, and a record takes
+// only a record compatible with it, 6.5.17.2p1, which rcc takes as the
+// same record, rcc's require_record_conversion(): either way round the
+// conversion is the error of incompatible types; two records of one tag
+// are not yet.
+void require_record_conversion(const token_t &at,
+                               const type_t &from,
+                               const type_t &to);
+
+// An object of a record type, which rcc-v2 does not declare yet, refused
+// at its name.
+void refuse_record_object(const token_t &name, const type_t &t);
 
 // 6.8, parse-statements.cc
 std::vector< stmt_t > block_item_list(parser_t &);

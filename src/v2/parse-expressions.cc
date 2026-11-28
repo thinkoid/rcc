@@ -106,9 +106,10 @@ primary_expression(parser_t &p)
 // The callee of a call at the '(' op, 6.5.3.3p1, rcc's callee(): a
 // function's name, in parentheses or not, the direct call, which names
 // its function.  The name of anything else is refused by name.  Any
-// other expression is read for its value, a void one refused, and is no
-// function and no pointer to one, rcc-v2 having no pointer to a
-// function.  Returns the function's name in the file's scope.
+// other expression is read for its value, a void one and a record
+// refused, require_scalar()'s, and is no function and no pointer to one,
+// rcc-v2 having no pointer to a function.  Returns the function's name
+// in the file's scope.
 const function_name_t &
 callee(const parser_t &p, const token_t &op, const operand_t &e)
 {
@@ -119,7 +120,7 @@ callee(const parser_t &p, const token_t &op, const operand_t &e)
         fail(op,
              "called object " + quoted(e.name->text) + " is not a function");
 
-    require_value(op, e);
+    require_scalar(op, e);
     fail(op, "called object is not a function or a pointer to one");
 }
 
@@ -127,7 +128,9 @@ callee(const parser_t &p, const token_t &op, const operand_t &e)
 // to its parameter's type as if by assignment, 6.5.3.3p6, with the sign
 // of that type, which the call's load of it into its register extends
 // a narrow one by.  One past the parameters is an error at its first
-// token, p2, said once it is read.
+// token, p2, said once it is read.  A record passes by value in no rule
+// rcc has yet, a not yet at the argument's first token, rcc's, once its
+// conversion is judged, as a record for a scalar parameter is, p2.
 converted_argument_t
 argument(parser_t &p,
          const function_t &type,
@@ -141,6 +144,11 @@ argument(parser_t &p,
         fail(start, "too many arguments to function " + quoted(function));
 
     const type_t &param = *type.params[index];
+    if (const record_t *r = record_in(param)) {
+        require_value(start, arg);
+        require_record_conversion(start, arg.type, param);
+        not_yet(start, record_words(*r) + " passed by value");
+    }
 
     return { assignment_conversion(start, std::move(arg), param),
              sign_of(param) };
@@ -169,7 +177,9 @@ argument_expression_list(parser_t &p,
 
 // A call, 6.5.3.3, its '(' op: the callee, the arguments and the ')'.
 // The call is an expression of the function's result type, p5,
-// converted where it is used as any expression of that type, or void.
+// converted where it is used as any expression of that type, or void; a
+// call of a function returning a record, which returns by value in no
+// rule rcc has yet, is not yet at the '(', before its arguments, rcc's.
 // Each argument is stored in a hidden local of the call, rcc's argument
 // slot (backend.md chapter 8), numbered among the function's locals
 // after the numbers the calls within its arguments took.
@@ -183,6 +193,8 @@ call(parser_t &p, const token_t &op, const operand_t &e)
     const std::string &name = p.unit.functions[f.index].name;
 
     const type_t &result = *type.result;
+    if (const record_t *r = record_in(result))
+        not_yet(op, record_words(*r) + " returned by value");
 
     std::vector< converted_argument_t > args =
         argument_expression_list(p, type, name);
@@ -232,7 +244,12 @@ stepped(const token_t &op, step_op_t s, operand_t arg)
 // result the lvalue it points to, of the pointee type, p4, the place
 // make_indirection() makes at the pointee's view and sign, which over an
 // address is the place again, so *&x is x; of a pointer to an array,
-// the array, make_indirection_to_array()'s, no place.  A function
+// the array, make_indirection_to_array()'s, no place.  A record pointee
+// makes the record's place through the pointer,
+// make_record_indirection()'s, whose value nothing reads and whose
+// address & takes; an incomplete one has none, so its place, which only
+// & and sizeof could take, is not yet, rcc's, and one rcc does not lay
+// out is refused by its words, require_honoured()'s.  A function
 // designator, whose value is its function's address, is not yet.
 operand_t
 indirect(const token_t &op, const operand_t &arg)
@@ -244,6 +261,16 @@ indirect(const token_t &op, const operand_t &arg)
     const type_t &t = pointee_of(arg.type);
     if (is< array_t >(t))
         return array_operand(t, make_indirection_to_array(std::move(pointer)));
+
+    if (const record_t *r = record_in(t)) {
+        if (!r->complete)
+            not_yet(op, "indirection through a pointer to incomplete type " +
+                            record_words(*r));
+
+        require_honoured(op, t);
+
+        return { t, make_record_indirection(std::move(pointer)) };
+    }
 
     return { .type = t,
              .node =
@@ -258,14 +285,15 @@ operand_t addition(const token_t &, operand_t, operand_t);
 // operand is a pointer to a complete object type and the other an
 // integer, p1, which the subscript checks itself, so that its errors
 // name the subscript and not the addition: two pointers make a
-// subscript that is no integer, and a pointer to a function and one to
-// an array of unknown size, incomplete, 6.2.5p27, are refused in the
-// subscript's words, rcc's require_subscripted_pointee().
+// subscript that is no integer, and a pointer to a function, one to an
+// array of unknown size and one to an incomplete record, each
+// incomplete, 6.2.5p27, are refused in the subscript's words, rcc's
+// require_subscripted_pointee().
 operand_t
 subscript(const token_t &op, operand_t e, operand_t index)
 {
-    require_value(op, e);
-    require_value(op, index);
+    require_scalar(op, e);
+    require_scalar(op, index);
 
     if (!points(e) && !points(index))
         fail(op, "subscripted value is not an array or a pointer");
@@ -279,6 +307,10 @@ subscript(const token_t &op, operand_t e, operand_t index)
 
     if (is< array_t >(t) && as< array_t >(t).count < 0)
         fail(op, "subscript of a pointer to an array of unknown size");
+
+    if (const record_t *r = record_in(t); r && !r->complete)
+        fail(op,
+             "subscript of a pointer to incomplete type " + record_words(*r));
 
     return indirect(op, addition(op, std::move(e), std::move(index)));
 }
@@ -413,13 +445,14 @@ by_sign(binary_op_t op, sign_t sign)
 }
 
 // The operand of a unary arithmetic operator, the value it reads, rcc's
-// rvalue() and require_integer(): not void, require_value()'s, and no
-// pointer, a function designator's value among them, 6.3.2.1p4, which
-// no operator of 6.5.4.3 takes, p1; each an error at the operator.
+// rvalue() and require_integer(): not void and no record,
+// require_scalar()'s, and no pointer, a function designator's value
+// among them, 6.3.2.1p4, which no operator of 6.5.4.3 takes, p1; each an
+// error at the operator.
 void
 require_arithmetic(const token_t &op, const operand_t &e)
 {
-    require_value(op, e);
+    require_scalar(op, e);
 
     if (points(e))
         fail(op, "operand of " + quoted(op.text) + " is a pointer");
@@ -588,9 +621,11 @@ indirection(parser_t &p)
 
 // The size of the type t, 6.5.4.4p2, rcc's sizeof_(): a constant of
 // type unsigned long, size_t on LP64, p5, which no overflow marks.  void,
-// a function and an array of unknown size have none, p1, an error at the
-// sizeof, op, and an enum in its own list, incomplete, is
-// refuse_not_yet_type()'s there.
+// a function, an array of unknown size and an incomplete record have
+// none, p1, an error at the sizeof, op; a record's size is its
+// layout's, its padding included, p4; and an enum in its own list,
+// incomplete, and a record rcc does not lay out are require_honoured()'s
+// there.
 operand_t
 sizeof_(const token_t &op, const type_t &t)
 {
@@ -603,7 +638,11 @@ sizeof_(const token_t &op, const type_t &t)
     if (is< array_t >(t) && as< array_t >(t).count < 0)
         fail(op, "invalid application of 'sizeof' to an array of unknown size");
 
-    refuse_not_yet_type(op, t);
+    if (const record_t *r = record_in(t); r && !r->complete)
+        fail(op, "invalid application of 'sizeof' to incomplete type " +
+                     record_words(*r));
+
+    require_honoured(op, t);
 
     return { make_int(64, false, int_kind_t::unsigned_long),
              make_literal(size_of(t), view_t::i64) };
@@ -675,17 +714,21 @@ unary_expression(parser_t &p)
 // whose address both targets read through one such cast.  A pointer
 // constant converted to an integer is a cast in rcc, no constant, which
 // rcc-v2 does not make yet.  A void operand is an error at the '(',
-// require_value()'s, and a function designator is not yet.  A function
-// type and an array type, which a typedef name may name, are no scalar
-// types, p2, rcc's error at the '(' once the operand is read, and an
-// enum in its own list is refuse_not_yet_type()'s there.
+// require_value()'s, and a function designator is not yet.  A record, a
+// function type and an array type, which a typedef name may name, are
+// no scalar types, p2, and neither is a record operand's, rcc's errors
+// at the '(' once the operand is read, and an enum in its own list is
+// refuse_not_yet_type()'s there.
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
-    if (is< function_t >(t) || is< array_t >(t))
+    if (record_in(t) || is< function_t >(t) || is< array_t >(t))
         fail(open, "cast to a type that is not a scalar");
 
     refuse_not_yet_type(open, t);
+
+    if (record_in(arg.type))
+        fail(open, "operand of a cast is not a scalar");
 
     const operand_t value { arg.type, rvalue(open, arg) };
 
@@ -762,14 +805,14 @@ marked_operand(const operand_t &lhs,
 // operand converted to the common type, and the result of that type,
 // the operation at its view and by its sign, 6.5.6p4, 6.5.7p5,
 // 6.5.11p3, 6.5.12p3, 6.5.13p3.  rcc reads both values before it judges
-// their types, so a void one is the error first, require_value()'s, and
-// a pointer the next, require_integers()'s.  The result keeps the marks
-// of marked_operand()'s operand.
+// their types, so a void one and a record are the error first,
+// require_scalar()'s, and a pointer the next, require_integers()'s.  The
+// result keeps the marks of marked_operand()'s operand.
 operand_t
 arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
-    require_value(at, lhs);
-    require_value(at, rhs);
+    require_scalar(at, lhs);
+    require_scalar(at, rhs);
     require_integers(at, lhs, rhs);
 
     const type_t t = common_type(lhs.type, rhs.type);
@@ -795,8 +838,8 @@ arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 operand_t
 shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
-    require_value(at, lhs);
-    require_value(at, rhs);
+    require_scalar(at, lhs);
+    require_scalar(at, rhs);
     require_integers(at, lhs, rhs);
 
     const type_t t = promoted(lhs.type);
@@ -844,8 +887,10 @@ multiplicative_expression(parser_t &p)
 }
 
 // Pointer arithmetic needs a pointer to a complete object type, 6.5.7p2,
-// p3, rcc's require_object_pointee(): no function, an error at the
-// operator.  Its stride is the pointee's size, 1, 2, 4 or 8; the
+// p3, rcc's require_object_pointee(): no function and no incomplete
+// record, 6.7.3.4p5, each an error at the operator, and a record rcc
+// does not lay out is refused by its words, require_honoured()'s.  Its
+// stride is the pointee's size, 1, 2, 4 or 8 or a record's; the
 // arithmetic on a pointer to an array, whose stride is a row's, is not
 // yet.
 long
@@ -857,6 +902,14 @@ require_object_pointee(const token_t &at, const operand_t &pointer)
 
     if (is< array_t >(t))
         not_yet(at, "arithmetic on a pointer to an array");
+
+    if (const record_t *r = record_in(t)) {
+        if (!r->complete)
+            fail(at, "arithmetic on a pointer to incomplete type " +
+                         record_words(*r));
+
+        require_honoured(at, t);
+    }
 
     return size_of(t);
 }
@@ -883,6 +936,34 @@ widened_index(const operand_t &e)
     return convert_to(e, t);
 }
 
+// A record's size is the stride of the arithmetic on a pointer to it.
+// The rows take it wherever the index is a constant, whose bytes are a
+// displacement, and the difference of two pointers divides by it; but
+// they scale a variable index at 2, 4 and 8 bytes alone, the scales of
+// x86-64's form, and rcc divides no difference by 1.  So a variable
+// index at any other stride and the difference of two pointers to a
+// record of one byte are not yet, at the operator; index is the index
+// widened, or none for a difference.
+void
+refuse_record_stride(const token_t &at,
+                     const operand_t &pointer,
+                     const std::optional< expr_t > &index,
+                     long stride)
+{
+    const record_t *r = record_in(pointee(pointer));
+    if (!r)
+        return;
+
+    if (!index && stride == 1)
+        not_yet(at, "a difference of pointers to " + record_words(*r) +
+                        ", of 1 byte");
+
+    if (index && !constant_of(*index) && stride != 2 && stride != 4 &&
+        stride != 8)
+        not_yet(at, "a variable index of a pointer to " + record_words(*r) +
+                        ", of " + std::to_string(stride) + " bytes");
+}
+
 // +, 6.5.7, its token at, rcc's addition(): two integers are
 // arithmetic()'s; with a pointer, a function designator's value among
 // them, a pointer and an integer in either order, p2, two pointers an
@@ -896,8 +977,8 @@ widened_index(const operand_t &e)
 operand_t
 addition(const token_t &at, operand_t lhs, operand_t rhs)
 {
-    require_value(at, lhs);
-    require_value(at, rhs);
+    require_scalar(at, lhs);
+    require_scalar(at, rhs);
     if (!points(lhs) && !points(rhs))
         return arithmetic(binary_op_t::add, at, std::move(lhs), std::move(rhs));
 
@@ -911,9 +992,11 @@ addition(const token_t &at, operand_t lhs, operand_t rhs)
     expr_t base = rvalue(at, pointer);
     refuse_pointer_constant(at, pointer.type, base);
 
-    return { pointer.type,
-             make_gep(binary_op_t::add, std::move(base),
-                      widened_index(left ? rhs : lhs), stride, !left) };
+    expr_t index = widened_index(left ? rhs : lhs);
+    refuse_record_stride(at, pointer, index, stride);
+
+    return { pointer.type, make_gep(binary_op_t::add, std::move(base),
+                                    std::move(index), stride, !left) };
 }
 
 // -, 6.5.7, its token at, rcc's subtraction(): two integers are
@@ -926,8 +1009,8 @@ addition(const token_t &at, operand_t lhs, operand_t rhs)
 operand_t
 subtraction(const token_t &at, operand_t lhs, operand_t rhs)
 {
-    require_value(at, lhs);
-    require_value(at, rhs);
+    require_scalar(at, lhs);
+    require_scalar(at, rhs);
     if (!points(lhs) && !points(rhs))
         return arithmetic(binary_op_t::sub, at, std::move(lhs), std::move(rhs));
 
@@ -937,16 +1020,24 @@ subtraction(const token_t &at, operand_t lhs, operand_t rhs)
     if (is< function_t >(pointee(lhs)))
         require_object_pointee(at, lhs);
 
-    if (points(rhs) && !compatible(pointee(lhs), pointee(rhs)))
+    if (points(rhs) && !compatible(pointee(lhs), pointee(rhs))) {
+        refuse_tag_twins(at, lhs.type, rhs.type);
         fail(at, "subtraction of pointers to different types");
+    }
 
     const long stride = require_object_pointee(at, lhs);
-    if (points(rhs))
+    if (points(rhs)) {
+        refuse_record_stride(at, lhs, std::nullopt, stride);
+
         return { make_int(64, true, int_kind_t::long_),
                  make_difference(rvalue(at, lhs), rvalue(at, rhs), stride) };
+    }
+
+    expr_t index = widened_index(rhs);
+    refuse_record_stride(at, lhs, index, stride);
 
     return { lhs.type, make_gep(binary_op_t::sub, rvalue(at, lhs),
-                                widened_index(rhs), stride, false) };
+                                std::move(index), stride, false) };
 }
 
 // The additive operators, 6.5.7, left-associative, as rcc's loop reads
@@ -1007,6 +1098,8 @@ common_pointer(binary_op_t op,
 {
     const bool lp = points(lhs);
     const bool rp = points(rhs);
+    if (lp && rp)
+        refuse_tag_twins(at, lhs.type, rhs.type);
 
     if (op == binary_op_t::eq || op == binary_op_t::ne) {
         if (is< function_t >(lhs.type) || is< function_t >(rhs.type))
@@ -1040,12 +1133,13 @@ common_pointer(binary_op_t op,
 // and so is one of pointers, and the result an int whatever the
 // operands' type, 6.5.9p7, 6.5.10p4.  Two pointer constants are
 // refuse_pointer_constant()'s.  rcc reads both values before it judges
-// their types, so a void one is the error first, require_value()'s.
+// their types, so a void one and a record are the error first,
+// require_scalar()'s.
 operand_t
 comparison(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
-    require_value(at, lhs);
-    require_value(at, rhs);
+    require_scalar(at, lhs);
+    require_scalar(at, rhs);
 
     const type_t t = points(lhs) || points(rhs) ?
                          common_pointer(op, at, lhs, rhs) :
@@ -1166,14 +1260,14 @@ inclusive_or_expression(parser_t &p)
 // 6.5.15p2; the result an int, the operator at an int's view, 6.5.14p3,
 // 6.5.15p3, a pointer compared with null at 64 bits; a pointer
 // constant beside a constant is refuse_pointer_constant()'s.  rcc reads
-// both values before it judges their types: a void one is an error at
-// the operator, and a function designator, a scalar, which rcc
+// both values before it judges their types: a void one and a record are
+// errors at the operator, and a function designator, a scalar, which rcc
 // compiles, is not yet.
 operand_t
 logical(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
-    require_value(at, lhs);
-    require_value(at, rhs);
+    require_scalar(at, lhs);
+    require_scalar(at, rhs);
 
     expr_t l = rvalue(at, lhs);
     expr_t r = rvalue(at, rhs);
@@ -1234,7 +1328,10 @@ logical_or_expression(parser_t &p)
 // make an int, and a constant arm is the constant of that type.  A
 // constant condition and two constant arms fold to the arm the
 // condition picks, p5, make_conditional()'s, marked overflowed where the
-// condition or that arm was so reached.  A pointer arm, p3, is not yet.
+// condition or that arm was so reached.  Two arms of one record are a
+// record's value, refuse_record_value()'s; a record and any other arm
+// meet in none of p3's pairs, an error at the '?'.  A pointer arm, p3, is
+// not yet.
 operand_t
 joined(const token_t &at,
        const operand_t &condition,
@@ -1245,11 +1342,19 @@ joined(const token_t &at,
 
     if (is< void_t >(yes.type) && is< void_t >(no.type))
         return { yes.type,
-                 make_conditional_void(std::move(cond), discarded(yes),
-                                       discarded(no)) };
+                 make_conditional_void(std::move(cond), discarded(at, yes),
+                                       discarded(at, no)) };
 
     if (is< void_t >(yes.type) || is< void_t >(no.type))
         fail(at, "void and non-void operands in conditional expression");
+
+    if (record_in(yes.type) || record_in(no.type)) {
+        refuse_tag_twins(at, yes.type, no.type);
+        if (yes.type == no.type)
+            refuse_record_value(at, yes.type);
+
+        fail(at, "incompatible operand types in conditional expression");
+    }
 
     const operand_t y { yes.type, rvalue(at, yes) };
     const operand_t n { no.type, rvalue(at, no) };
@@ -1361,7 +1466,9 @@ compound_assignment(const token_t &op,
 // value is converted to the simple assignment's type, 6.5.17.2p2, the
 // left operand's, 6.5.17.1p3, assignment_conversion()'s at the
 // operator.  A compound assignment of a pointer or by one is not yet, at
-// its operator.
+// its operator, and so is an assignment of a record, whose copy rcc-v2
+// does not write yet; a compound assignment of a record is no
+// assignment of a modifiable lvalue, 6.5.17.3p1, as rcc says.
 operand_t
 assignment_expression(parser_t &p)
 {
@@ -1372,6 +1479,9 @@ assignment_expression(parser_t &p)
         return lhs;
 
     const token_t &op = advance(p);
+    if (const record_t *r = record_in(lhs.type); r && !compound)
+        not_yet(op, "assignment of " + record_words(*r));
+
     if (!lhs.node || !is_assignable(*lhs.node))
         fail(op, "expression is not assignable");
 
@@ -1396,19 +1506,20 @@ assignment_expression(parser_t &p)
 // expression, p2, discarded()'s, at the comma, before its right operand
 // is read, so it may be void; the result is of the right operand's type
 // and value, which may be void too and is converted as discarded()
-// converts.  A comma is no constant expression, 6.6p3, so it carries no
-// mark of an overflow.
+// converts, at the comma, a record's value refused there.  A comma is no
+// constant expression, 6.6p3, so it carries no mark of an overflow.
 operand_t
 expression(parser_t &p)
 {
     operand_t e = assignment_expression(p);
 
-    while (accept(p, tok_t::comma)) {
-        expr_t lhs = discarded(std::move(e));
+    while (peek(p).kind == tok_t::comma) {
+        const token_t &op = advance(p);
+        expr_t lhs = discarded(op, std::move(e));
 
         operand_t rhs = assignment_expression(p);
         const type_t t = rhs.type;
-        e = { t, make_comma(std::move(lhs), discarded(std::move(rhs))) };
+        e = { t, make_comma(std::move(lhs), discarded(op, std::move(rhs))) };
     }
 
     return e;

@@ -48,8 +48,11 @@ bool is_place(const expr_t &e);
 expr_t make_address_of(expr_t place);
 
 // *E of a pointer's value, 6.5.4.2p4: the place it points to, of the
-// pointee's view and of a type of the sign.
+// pointee's view and of a type of the sign; and of a pointer to a
+// record, the record's place through it, which no row reads but &, so
+// *&x is no place again.
 expr_t make_indirection(expr_t pointer, view_t view, sign_t sign);
+expr_t make_record_indirection(expr_t pointer);
 
 // *E of a pointer to an array, 6.5.4.2p4: the array it points to, whose
 // node is its decay, the address of the place the pointer points to,

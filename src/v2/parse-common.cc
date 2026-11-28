@@ -199,18 +199,26 @@ refuse_designator(const operand_t &e)
 
 } // namespace
 
+void
+require_scalar(const token_t &at, const operand_t &e)
+{
+    require_value(at, e);
+    refuse_record_operand(at, e.type);
+}
+
 expr_t
 rvalue(const token_t &at, operand_t e)
 {
-    require_value(at, e);
+    require_scalar(at, e);
     refuse_designator(e);
 
     return rvalue(std::move(*e.node));
 }
 
 expr_t
-discarded(operand_t e)
+discarded(const token_t &at, operand_t e)
 {
+    refuse_record_value(at, e.type);
     refuse_designator(e);
 
     return rvalue(std::move(*e.node));
@@ -250,13 +258,16 @@ is_null_pointer_constant(const operand_t &e)
     return is< int_t >(e.type) && e.node && constant_of(*e.node) == 0;
 }
 
-// rcc's order: an integer to a pointer, then a pointer to an integer,
-// then two pointers whose pointees are not compatible, 6.5.17.2p1; a
-// function designator is a pointer to its function there, 6.3.2.1p4.
+// rcc's order: a record, which converts to none of the others, then an
+// integer to a pointer, then a pointer to an integer, then two pointers
+// whose pointees are not compatible, 6.5.17.2p1, two pointers to twins of
+// one tag not yet; a function designator is a pointer to its function
+// there, 6.3.2.1p4.
 expr_t
 assignment_conversion(const token_t &at, operand_t e, const type_t &t)
 {
     require_value(at, e);
+    require_record_conversion(at, e.type, t);
 
     const bool to_pointer = is< pointer_t >(t);
     const bool from_pointer = points(e);
@@ -267,8 +278,10 @@ assignment_conversion(const token_t &at, operand_t e, const type_t &t)
     if (!to_pointer && from_pointer)
         fail(at, "incompatible pointer to integer conversion");
 
-    if (to_pointer && from_pointer && !compatible(pointee_of(t), pointee(e)))
+    if (to_pointer && from_pointer && !compatible(pointee_of(t), pointee(e))) {
+        refuse_tag_twins(at, t, e.type);
         fail(at, "incompatible pointer types");
+    }
 
     return convert_to(e, t);
 }

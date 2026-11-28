@@ -57,10 +57,10 @@ make_assign(const place_t< W, V, S > &place, const expr_t &value)
 }
 
 // &'s builder exists for a place whose address the rows write as a
-// value, a local's and one through a pointer, and so defines what is a
-// place (principle 8): the address of its where, 6.5.4.2p3, so &*p is
-// a node of its own, whose rows write the pointer's value, as rcc's
-// address_value() does.  A global's place has none yet.
+// value, a local's and one through a pointer, a record's among them, and
+// so defines what is a place (principle 8): the address of its where,
+// 6.5.4.2p3, so &*p is a node of its own, whose rows write the pointer's
+// value, as rcc's address_value() does.  A global's place has none yet.
 template< view_t V, sign_t S >
 expr_t
 make_address_of(const place_t< slot_t, V, S > &place)
@@ -71,6 +71,12 @@ make_address_of(const place_t< slot_t, V, S > &place)
 template< view_t V, sign_t S >
 expr_t
 make_address_of(const place_t< indirect_t, V, S > &place)
+{
+    return expr_t(address_of_t< indirect_t > { place.where });
+}
+
+inline expr_t
+make_address_of(const record_place_t< indirect_t > &place)
 {
     return expr_t(address_of_t< indirect_t > { place.where });
 }

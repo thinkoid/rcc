@@ -499,6 +499,13 @@ pinned_within(const state_t &s, const place_t< W, V, S > &p)
 
 template< typename W >
 unsigned
+pinned_within(const state_t &s, const record_place_t< W > &p)
+{
+    return pinned_within(s, p.where);
+}
+
+template< typename W >
+unsigned
 pinned_within(const state_t &s, const address_of_t< W > &a)
 {
     return pinned_within(s, a.where);
@@ -694,6 +701,13 @@ moved_within(const state_t &s, const place_t< W, V, S > &p)
 
 template< typename W >
 unsigned
+moved_within(const state_t &s, const record_place_t< W > &p)
+{
+    return moved_within(s, p.where);
+}
+
+template< typename W >
+unsigned
 moved_within(const state_t &s, const address_of_t< W > &a)
 {
     return moved_within(s, a.where);
@@ -866,6 +880,13 @@ spills_within(const state_t &s, const indirect_t &w)
 template< typename W, view_t V, sign_t S >
 bool
 spills_within(const state_t &s, const place_t< W, V, S > &p)
+{
+    return spills_within(s, p.where);
+}
+
+template< typename W >
+bool
+spills_within(const state_t &s, const record_place_t< W > &p)
 {
     return spills_within(s, p.where);
 }

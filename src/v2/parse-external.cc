@@ -72,9 +72,10 @@ refuse_static_main(const specifiers_t &spec, const declarator_t &d)
 // identifier, so a name of others, the other kind of entity, or of the
 // file's scope, a typedef name or a constant, declared again is a
 // redefinition, and two declarations of one kind are of compatible
-// types, 6.7.1p5, or a conflict, each said at the later name.  The
-// entity takes the composite of the two from then on, 6.2.7p5, which
-// for an enumerated type and its integer type is the integer type,
+// types, 6.7.1p5, or a conflict, each said at the later name, a
+// conflict of twins of one tag refuse_tag_twins()'s.  The entity takes
+// the composite of the two from then on, 6.2.7p5, which for an
+// enumerated type and its integer type is the integer type,
 // composite()'s, so a third declaration of another enumeration of that
 // integer type agrees.  Two integer types are compatible only where
 // they are of one kind, rcc's related(), or an enumerated type and its
@@ -97,8 +98,10 @@ earlier_declaration(std::unordered_map< std::string_view, N > &names,
     if (it == names.end())
         return nullptr;
 
-    if (!compatible(it->second.type, t))
+    if (!compatible(it->second.type, t)) {
+        refuse_tag_twins(name, it->second.type, t);
         fail(name, "conflicting types for " + quoted(name.text));
+    }
 
     it->second.type = composite(it->second.type, t);
 
@@ -150,9 +153,10 @@ adopt_block_entity(parser_t &p, std::string_view name)
 // Declares a function in the file's scope, or meets its earlier
 // declaration, and gives it the declaration's linkage.  Its entry among
 // the unit's functions is made at its first declaration, so the unit
-// writes its functions in the order they are first declared, with the
-// view of each parameter, what its frame needs.  Returns the index of
-// the entry.
+// writes its functions in the order they are first declared; the view of
+// each parameter, what its frame needs, is its definition's, since a
+// declaration may name a parameter of a record type, which has none.
+// Returns the index of the entry.
 std::size_t
 declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -172,13 +176,8 @@ declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         return earlier->index;
     }
 
-    std::vector< view_t > parameters;
-    for (const parameter_t &param : d.params)
-        parameters.push_back(view_of(param.type));
-
     const std::size_t index = p.unit.functions.size();
-    p.unit.functions.push_back(
-        { std::string(d.name.text), external, std::move(parameters) });
+    p.unit.functions.push_back({ std::string(d.name.text), external, { } });
     p.functions.emplace(d.name.text, function_name_t { d.type, index });
 
     return index;
@@ -214,6 +213,21 @@ require_definition_parameters(const declarator_t &d)
             fail(param.start, "parameter name omitted");
 }
 
+// The result and each parameter are objects the definition makes, so
+// none may be of a record, which returns and passes by value in no rule
+// rcc has yet, rcc's require_definable_head(): each not yet, the result
+// at the function's name and a parameter at its own, in rcc's words.
+void
+require_definable_head(const declarator_t &d)
+{
+    if (const record_t *r = record_in(*as< function_t >(d.type).result))
+        not_yet(d.name, record_words(*r) + " returned by value");
+
+    for (const parameter_t &param : d.params)
+        if (const record_t *r = record_in(param.type))
+            not_yet(*param.name, record_words(*r) + " passed by value");
+}
+
 // Each goto of the function names a label the function defines,
 // 6.8.7.2p1, before the goto or after it, since a label's name has
 // function scope, 6.2.1p3: so the check waits for the function's end,
@@ -234,9 +248,9 @@ require_labels(const parser_t &p)
 // The body is parsed with the function's result type, its locals
 // numbered after the parameters, its loops and switches, its case and
 // default labels and its C labels from 0, and is the entry's once its
-// gotos name labels it defines.  A system header's definition is
-// compiled as any other, since rcc's rule for one is a static inline
-// function's.
+// gotos name labels it defines, with the views of its parameters.  A
+// system header's definition is compiled as any other, since rcc's rule
+// for one is a static inline function's.
 void
 function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
 {
@@ -245,6 +259,7 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
         fail(d.name, "redefinition of " + quoted(d.name.text));
 
     require_definition_parameters(d);
+    require_definable_head(d);
 
     p.result = *as< function_t >(d.type).result;
     p.locals = static_cast< int >(d.params.size());
@@ -258,6 +273,11 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
     stmt_t body = function_body(p, std::move(d.scope));
     require_labels(p);
 
+    std::vector< view_t > parameters;
+    for (const parameter_t &param : d.params)
+        parameters.push_back(view_of(param.type));
+
+    p.unit.functions[index].parameters = std::move(parameters);
     p.unit.functions[index].body = std::move(body);
 }
 
@@ -290,6 +310,7 @@ declare_object(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 
     refuse_static_pointer(d.name, d.type);
     refuse_static_array(d.name, d.type);
+    refuse_record_object(d.name, d.type);
 
     adopt_block_entity(p, d.name.text);
 

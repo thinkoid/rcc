@@ -312,6 +312,14 @@ make_indirection_to_array(expr_t pointer)
         make_indirection(std::move(pointer), view_t::i64, sign_t::unsigned_));
 }
 
+// A record's place through any pointer: no builder reads the pointer's
+// class, so no hop is made.
+expr_t
+make_record_indirection(expr_t pointer)
+{
+    return expr_t(record_place_t< indirect_t > { { std::move(pointer), 0 } });
+}
+
 // One hop through the index's model, which knows its class (3.3): the
 // pointer's class no row reads.
 expr_t
