@@ -131,6 +131,29 @@ struct expr_t::interface_t
                           view_t,
                           const expr_t &rhs,
                           const expr_t &self) const = 0;
+
+    // a comma on the right, its class as data: its left operand erased
+    // and its right one's class, as a right operand of its own crosses
+    virtual expr_t binary(binary_op_t op,
+                          view_t,
+                          const comma_t< constant_class_t > &rhs,
+                          const expr_t &self) const = 0;
+    virtual expr_t binary(binary_op_t op,
+                          view_t,
+                          const comma_t< load_class_t< slot_t > > &rhs,
+                          const expr_t &self) const = 0;
+    virtual expr_t binary(binary_op_t op,
+                          view_t,
+                          const comma_t< load_class_t< global_t > > &rhs,
+                          const expr_t &self) const = 0;
+    virtual expr_t binary(binary_op_t op,
+                          view_t,
+                          const comma_t<> &rhs,
+                          const expr_t &self) const = 0;
+
+    // a comma: the right operand's model, which knows the right
+    // operand's class, makes the node
+    virtual expr_t comma(const expr_t &lhs, const expr_t &self) const = 0;
 };
 
 // The rows of a held node, by overload and by the state's namespace: a
@@ -403,6 +426,38 @@ crossing(const trunc_t< V, load_t< W, V, S > > &t, const expr_t &)
     return { t.arg.where, S };
 }
 
+// A comma crosses as a class of its own, its left operand erased and
+// its right one's class as data, since x86-64's rows read a comma on
+// their right through to that class, rcc's operand_of(): a constant's
+// value, a load's where, a load under a trunc_t of its own view among
+// them, or the right operand erased.
+template< constant C >
+comma_t< constant_class_t >
+crossing(const comma_t< C > &c, const expr_t &)
+{
+    return { c.lhs, { value_of(c.rhs), view_of(c.rhs) } };
+}
+
+template< typename W, view_t V, sign_t S >
+comma_t< load_class_t< W > >
+crossing(const comma_t< load_t< W, V, S > > &c, const expr_t &)
+{
+    return { c.lhs, { c.rhs.where, S } };
+}
+
+template< view_t V, typename W, sign_t S >
+comma_t< load_class_t< W > >
+crossing(const comma_t< trunc_t< V, load_t< W, V, S > > > &c, const expr_t &)
+{
+    return { c.lhs, { c.rhs.arg.where, S } };
+}
+
+inline const comma_t<> &
+crossing(const comma_t<> &c, const expr_t &)
+{
+    return c;
+}
+
 // Whether a right operand of a class crosses erased all the same, a
 // question of the operator, data here, asked once (3.3): a shift's count
 // and an operand of && or || keep their own types, so their load is no
@@ -421,6 +476,31 @@ crosses_erased(binary_op_t, const C &)
 {
     return false;
 }
+
+// A comma of any class crosses erased to a comparison and to && and ||,
+// which read no comma through, as rcc's comparisons take no operand of
+// binary_operand().
+template< typename C >
+constexpr bool
+crosses_erased(binary_op_t op, const comma_t< C > &)
+{
+    return is_comparison(op) || is_logical(op);
+}
+
+// Whether a class is a comma's of a load, of either where.
+template< typename C >
+constexpr bool load_comma = false;
+
+template< typename W >
+constexpr bool load_comma< comma_t< load_class_t< W > > > = true;
+
+// Whether a node crosses as a comma of a load, crossing()'s, which as a
+// shift's count crosses with its right operand erased: a count keeps
+// its own type, and what a shift reads of it is whether it is a
+// constant, as a load as a count crosses erased.
+template< typename T >
+constexpr bool comma_of_load = load_comma< std::decay_t< decltype(crossing(
+    std::declval< const T & >(), std::declval< const expr_t & >())) > >;
 
 // The right operand's class made a type again for op at the
 // operation's view V, and handed to f: a constant by its value, at V,
@@ -446,6 +526,35 @@ typed(const load_class_t< W > &l, F &&f)
         l.sign, [&]< sign_t S >() { return f(load_t< W, V, S > { l.where }); });
 }
 
+// A comma's class made a type again as its right operand's is, the
+// comma's left operand as it is; but a shift's count keeps its own view,
+// since the comma's value is no immediate on aarch64, where the count
+// is written in a register at its width, mov x1, #63.
+template< binary_op_t op, view_t V, typename F >
+expr_t
+typed(const comma_t< constant_class_t > &c, F &&f)
+{
+    const auto comma = [&](const auto &k) {
+        return f(comma_t< std::decay_t< decltype(k) > > { c.lhs, k });
+    };
+
+    if constexpr (is_shift(op))
+        return cross_operation(c.rhs.view, [&]< view_t W >() {
+            return classed_constant< W >(c.rhs.value, comma);
+        });
+    else
+        return classed_constant< V >(c.rhs.value, comma);
+}
+
+template< binary_op_t op, view_t V, typename W, typename F >
+expr_t
+typed(const comma_t< load_class_t< W > > &c, F &&f)
+{
+    return cross(c.rhs.sign, [&]< sign_t S >() {
+        return f(comma_t< load_t< W, V, S > > { c.lhs, { c.rhs.where } });
+    });
+}
+
 template< binary_op_t op, view_t V, typename R, typename F >
 expr_t
 typed(const R &rhs, F &&f)
@@ -467,25 +576,38 @@ operand_at()
         return view_of(C { }) == V;
 }
 
+// Whether the class R of a right operand is one of op: any is, but a
+// comma's, which reaches only the operators whose rows on x86-64 read
+// it, and of a shift a comma of a constant or of an erased operand
+// alone, crosses_erased() and comma_of_load's.
+template< binary_op_t op, typename R >
+constexpr bool right_at = true;
+
+template< binary_op_t op, typename R >
+constexpr bool right_at< op, comma_t< R > > =
+    !is_comparison(op) && !is_logical(op) &&
+    !(is_shift(op) && comma_of_load< comma_t< R > >);
+
 // A binary operator on two operands in their classes: the crossing from
 // the operator and the view, values in the parser, to the node's
 // parameters (principle 6), and the right operand's class made a type
 // again at the view, made once for every pair of classes, the typed
 // builder of each.  A left operand of another view than the
-// operation's is a tree the parser does not make, and no node type is
-// instantiated of it.
+// operation's is a tree the parser does not make, and a right operand
+// of a class its operator does not read is one no crossing sends: no
+// node type is instantiated of either.
 template< typename L, typename R >
 expr_t
 fwd_binary(binary_op_t op, view_t view, const L &lhs, const R &rhs)
 {
     return cross(op, [&]< binary_op_t o >() {
         return cross_operation(view, [&]< view_t V >() {
-            return typed< o, V >(rhs, [&](const auto &r) -> expr_t {
-                if constexpr (operand_at< o, V, L >())
+            return typed< o, V >(rhs, [&]< typename C >(const C &r) -> expr_t {
+                if constexpr (operand_at< o, V, L >() && right_at< o, C >)
                     return make_binary< o, V >(lhs, r);
                 else
                     throw std::logic_error(
-                        "v2: an operand of another view under an operation");
+                        "v2: an operand of no class or view of its operation");
             });
         });
     });
@@ -525,6 +647,46 @@ binary_of(binary_op_t op,
         return fwd_binary(op, view, logical_operand(held, self), rhs);
 
     return fwd_binary(op, view, classed_operand(held, self), rhs);
+}
+
+// The right operand of a comma in the class its builder keeps it in,
+// make_comma(): a constant, a load, and a trunc_t of a load's own view,
+// which a binary operator's crossing reads as the load, each the node it
+// is, since a comma's value is its right operand's; anything else
+// erased; and a comma itself, which the builder takes apart.
+template< typename T >
+const expr_t &
+comma_operand(const T &, const expr_t &self)
+{
+    return self;
+}
+
+template< constant C >
+const C &
+comma_operand(const C &c, const expr_t &)
+{
+    return c;
+}
+
+template< typename W, view_t V, sign_t S >
+const load_t< W, V, S > &
+comma_operand(const load_t< W, V, S > &l, const expr_t &)
+{
+    return l;
+}
+
+template< view_t V, typename W, sign_t S >
+const trunc_t< V, load_t< W, V, S > > &
+comma_operand(const trunc_t< V, load_t< W, V, S > > &t, const expr_t &)
+{
+    return t;
+}
+
+template< typename R >
+const comma_t< R > &
+comma_operand(const comma_t< R > &c, const expr_t &)
+{
+    return c;
 }
 
 // Whether a node is a place an assignment stores into: whether the
@@ -671,6 +833,12 @@ struct expr_t::model_t final: interface_t
         if (crosses_erased(op, rhs))
             return lhs.self->binary(op, view, self, lhs);
 
+        if constexpr (comma_of_load< T >) {
+            if (is_shift(op))
+                return lhs.self->binary(
+                    op, view, comma_t<> { held.lhs, expr_t(held.rhs) }, lhs);
+        }
+
         return lhs.self->binary(op, view, rhs, lhs);
     }
 
@@ -720,6 +888,43 @@ struct expr_t::model_t final: interface_t
                   const expr_t &self) const override
     {
         return binary_of(op, view, held, self, rhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  view_t view,
+                  const comma_t< constant_class_t > &rhs,
+                  const expr_t &self) const override
+    {
+        return binary_of(op, view, held, self, rhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  view_t view,
+                  const comma_t< load_class_t< slot_t > > &rhs,
+                  const expr_t &self) const override
+    {
+        return binary_of(op, view, held, self, rhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  view_t view,
+                  const comma_t< load_class_t< global_t > > &rhs,
+                  const expr_t &self) const override
+    {
+        return binary_of(op, view, held, self, rhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  view_t view,
+                  const comma_t<> &rhs,
+                  const expr_t &self) const override
+    {
+        return binary_of(op, view, held, self, rhs);
+    }
+
+    expr_t comma(const expr_t &lhs, const expr_t &self) const override
+    {
+        return make_comma(lhs, comma_operand(held, self), self);
     }
 
     T held;

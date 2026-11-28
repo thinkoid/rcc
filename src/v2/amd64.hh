@@ -505,6 +505,15 @@ pinned_within(const state_t &s, const call_void_t &c)
     return call_pins(s, c.args);
 }
 
+// A comma pins nothing of its own, rcc's pins() of one, and what its
+// two operands pin.
+template< typename R >
+unsigned
+pinned_within(const state_t &s, const comma_t< R > &c)
+{
+    return pinned_within(s, c.lhs) | pinned_within(s, c.rhs);
+}
+
 // The registers a pinned instruction within a node would move a value
 // held across the node out of, rcc's moved_within(), 6.5: pins() over
 // the tree, as pinned_within(), but nothing below && and || and nothing
@@ -603,6 +612,13 @@ constexpr unsigned
 moved_within(const state_t &, const call_void_t &)
 {
     return 0;
+}
+
+template< typename R >
+unsigned
+moved_within(const state_t &s, const comma_t< R > &c)
+{
+    return moved_within(s, c.lhs) | moved_within(s, c.rhs);
 }
 
 // The registers a node hands its left operand, of those its consumer
@@ -915,6 +931,169 @@ value(state_t &s, const binary_t< op, V, L, C > &b, unsigned wanted = 0)
     return l;
 }
 
+// A comma on the right, rcc's binary() and operand_of(), chapter 6.1:
+// the left operand as for any right operand, then the comma's left
+// operand for its effect, outside the reservation of the right one,
+// then the comma's right operand as the instruction takes it in its own
+// form, binary_operand()'s.  The registers the right operand is taken
+// outside, held_out()'s, are said before the effect, as rcc says them,
+// while the left operand is in the register its row returned.  A
+// constant on the left of an operator that commutes is the mirror's,
+// which wins.  The family's operation on a comma's right operand by its
+// class is the family's *_after(), below each.
+
+// The operation of + - * & | ^ on the held left value l and a comma's
+// right operand: an object in memory as the instruction's operand,
+// addl -12(%rbp), %eax, its address formed outside avoid, a GOT's base
+// among them, and given back; an immediate, addl $5, %eax and the
+// three-operand imull $5, %eax, %eax; anything else its value, held
+// outside avoid, then arithmetic().
+template< binary_op_t op, view_t V, typename W, sign_t S >
+value_t
+arithmetic_after(state_t &s,
+                 value_t l,
+                 const load_t< W, V, S > &rhs,
+                 unsigned avoid,
+                 unsigned)
+{
+    const address_t at = address_avoiding(s, rhs.where, avoid);
+    const auto [left, source] = operands(s, l, at);
+    operate(s, op, left, source, V);
+    release(s, at);
+
+    return l;
+}
+
+template< binary_op_t op, view_t V, immediate I >
+value_t
+arithmetic_after(state_t &s, value_t l, const I &rhs, unsigned, unsigned)
+{
+    const reg_t r = reg_of(s, l);
+    if constexpr (op == binary_op_t::mul)
+        multiply(s, r, r, immediate_of(rhs), V);
+    else
+        operate(s, op, r, immediate_of(rhs), V);
+
+    return l;
+}
+
+template< binary_op_t op, view_t V, typename R >
+value_t
+arithmetic_after(
+    state_t &s, value_t l, const R &rhs, unsigned avoid, unsigned wanted)
+{
+    const value_t r = rvalue_avoiding(s, rhs, avoid);
+
+    return arithmetic(s, op, l, r, V, wanted);
+}
+
+template< binary_op_t op, view_t V, typename L, typename R >
+    requires arithmetic_operator< op > && (!constant_first< op, L >)
+value_t
+value(state_t &s,
+      const binary_t< op, V, L, comma_t< R > > &b,
+      unsigned wanted = 0)
+{
+    const unsigned named = wanted_left(s, wanted, 0, b.rhs);
+
+    const value_t l = left_operand(s, b.lhs, b.rhs, pinned_by(b.rhs), named);
+    const unsigned avoid = held_out(s, l, named);
+    effect(s, b.rhs.lhs);
+
+    return arithmetic_after< op, V >(s, l, b.rhs.rhs, avoid, wanted);
+}
+
+// The division of / and % of the held dividend l by a comma's right
+// operand: an object in memory as idiv's operand, idivl -12(%rbp), its
+// address formed outside avoid and rax and rdx; anything else held
+// outside them, a constant too.
+template< binary_op_t op, view_t V, typename W, sign_t S >
+value_t
+divide_after(state_t &s,
+             value_t l,
+             const load_t< W, V, S > &rhs,
+             unsigned avoid,
+             unsigned wanted)
+{
+    const address_t at =
+        address_avoiding(s, rhs.where, avoid | pins(op, false));
+
+    return divide(s, op, l, at, V, wanted);
+}
+
+template< binary_op_t op, view_t V, typename R >
+value_t
+divide_after(
+    state_t &s, value_t l, const R &rhs, unsigned avoid, unsigned wanted)
+{
+    const value_t r = rvalue_avoiding(s, rhs, avoid | pins(op, constant< R >));
+
+    return divide(s, op, l, r, V, wanted);
+}
+
+// / and % keep their own pin, the reservation around them cleared, as
+// the division's other rows do.
+template< binary_op_t op, view_t V, typename L, typename R >
+    requires division_operator< op >
+value_t
+value(state_t &s,
+      const binary_t< op, V, L, comma_t< R > > &b,
+      unsigned wanted = 0)
+{
+    const unsigned outer = std::exchange(s.reserved, 0u);
+    const unsigned named = wanted_left(s, wanted, 0, b.rhs);
+
+    const value_t l = left_operand(s, b.lhs, b.rhs, pinned_by(b.rhs), named);
+    const unsigned avoid = held_out(s, l, named);
+    effect(s, b.rhs.lhs);
+    const value_t v = divide_after< op, V >(s, l, b.rhs.rhs, avoid, wanted);
+
+    s.reserved = outer;
+
+    return v;
+}
+
+// The shift of the held value l by a comma's right operand: a constant
+// is the instruction's immediate, count_of(); anything else is
+// shift_count()'s, held outside avoid, then shift().
+template< binary_op_t op, view_t V, constant C >
+void
+shift_after(state_t &s, value_t l, const C &count, unsigned)
+{
+    operate(s, op, reg_of(s, l), count_of(value_of(count)), V);
+}
+
+template< binary_op_t op, view_t V, typename R >
+void
+shift_after(state_t &s, value_t l, const R &count, unsigned avoid)
+{
+    const value_t r = shift_count(s, count, avoid);
+    shift(s, op, l, r, V, view_of(count));
+}
+
+// << and >> pin rcx for a comma's count whatever its right operand is,
+// rcc's pins() of a count that is no literal, so the shifted value is
+// generated outside rcx: d + (a << (b, 3)) is movl -4(%rbp), %edx, movl
+// -8(%rbp), %ecx and shll $3, %edx.
+template< binary_op_t op, view_t V, typename L, typename R >
+    requires shift_operator< op >
+value_t
+value(state_t &s,
+      const binary_t< op, V, L, comma_t< R > > &b,
+      unsigned wanted = 0)
+{
+    const unsigned own = pins(op, false);
+    const unsigned named = wanted_left(s, wanted, own, b.rhs);
+
+    const value_t l =
+        left_operand(s, b.lhs, b.rhs, own | pinned_by(b.rhs), named);
+    const unsigned avoid = held_out(s, l, named);
+    effect(s, b.rhs.lhs);
+    shift_after< op, V >(s, l, b.rhs.rhs, avoid);
+
+    return l;
+}
+
 // cmp of a source and the held value l at the view, rcc's
 // compare_with(): a held value r, cmpl %ecx, %eax, the registers of
 // operands(), a spilled value reloaded, and r released; or an operand
@@ -1211,6 +1390,16 @@ void
 test_with(state_t &s, value_t l, const I &rhs)
 {
     test(s, l, immediate_of(rhs), V);
+}
+
+// A comma, binary_operand()'s: its left operand for its effect, then its
+// right one in its class, testl -12(%rbp), %eax for a & (b, c).
+template< view_t V, typename R >
+void
+test_with(state_t &s, value_t l, const comma_t< R > &rhs)
+{
+    effect(s, rhs.lhs);
+    test_with< V >(s, l, rhs.rhs);
 }
 
 // & as a jump, rcc's test(), 7.1, the PDP-11's bit of cctab's cc81: the

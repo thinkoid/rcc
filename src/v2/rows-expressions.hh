@@ -336,4 +336,36 @@ effect(S &s, const call_void_t &c)
     call(s, c.name, c.args);
 }
 
+// A comma, rcc's binary(), cbranch() and effect() of one, 6.5.18p2: the
+// left operand for its effect, then the right operand by the entry
+// point the comma was called by, its value handed the consumer's
+// register, its jump, or its effect.  A comma takes no label and writes
+// nothing of its own.  Its store into a slot is the primary's, the
+// value in a register, since rcc stores in place an immediate alone:
+// c = (1, 2); is movl $2, %eax and its store.
+template< typename S, typename R >
+value_t
+value(S &s, const comma_t< R > &c, unsigned wanted = 0)
+{
+    effect(s, c.lhs);
+
+    return value(s, c.rhs, wanted);
+}
+
+template< typename S, typename R >
+void
+effect(S &s, const comma_t< R > &c)
+{
+    effect(s, c.lhs);
+    effect(s, c.rhs);
+}
+
+template< typename S, typename R >
+void
+branch(S &s, const comma_t< R > &c, int label, bool sense)
+{
+    effect(s, c.lhs);
+    branch(s, c.rhs, label, sense);
+}
+
 } // namespace rcc

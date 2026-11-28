@@ -235,6 +235,19 @@ struct call_void_t
     std::vector< argument_t > args;
 };
 
+// l, r, 6.5.18: the left operand evaluated as a void expression, then
+// the right one, whose type and value are the result's, p2.  The left
+// is erased; the right is kept in its class, a constant, a load or
+// erased, as a binary operator keeps an operand, since x86-64's rows
+// read a comma on their right through to that class, rcc's
+// operand_of().  Nothing folds it, 6.6p3.
+template< typename R = expr_t >
+struct comma_t
+{
+    expr_t lhs;
+    R rhs;
+};
+
 // e;, 6.8.4p2: the expression evaluated for its effect, its value
 // dropped.
 struct expr_stmt_t
@@ -574,6 +587,14 @@ view_of(const call_void_t &)
     throw std::logic_error("v2: the view of a void call");
 }
 
+// A comma's value is its right operand's, and so is its view.
+template< typename R >
+view_t
+view_of(const comma_t< R > &c)
+{
+    return view_of(c.rhs);
+}
+
 // The width rule, rcc's held_t::valid (c1-common.hh): the width up to
 // which the bits of a node's register are its value extended by sign,
 // read at the sign of the type its consumer converts it from; a summary
@@ -727,6 +748,15 @@ int
 valid_of(const call_t< V > &, sign_t)
 {
     return width(V);
+}
+
+// A comma's value is its right operand's, in the register that
+// operand's row left it in.
+template< typename R >
+int
+valid_of(const comma_t< R > &c, sign_t sign)
+{
+    return valid_of(c.rhs, sign);
 }
 
 // A place is read only through its load, and a void call has no value:

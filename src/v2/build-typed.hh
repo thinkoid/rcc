@@ -545,6 +545,27 @@ make_conversion(sign_t to_sign, const T &e, const expr_t &self)
         return make_narrowing< V >(e, self);
 }
 
+// A comma of the left operand lhs and the right operand in its class:
+// the node, which nothing folds, 6.6p3, and which drops no identity, a
+// + (b, 0) adding 0 as rcc's does.
+template< typename R >
+expr_t
+make_comma(const expr_t &lhs, const R &rhs, const expr_t &)
+{
+    return expr_t(comma_t< R > { lhs, rhs });
+}
+
+// A comma on the right is taken apart, (x, (y, c)) built as ((x, y), c),
+// which keeps c's class: its effect is x's then y's, as rcc's
+// operand_of() recurses, and every entry point writes the same text in
+// either shape.
+template< typename R >
+expr_t
+make_comma(const expr_t &lhs, const comma_t< R > &rhs, const expr_t &)
+{
+    return expr_t(comma_t< R > { make_comma(lhs, rhs.lhs), rhs.rhs });
+}
+
 // An if of the then part then, a node's type S: with the else part
 // otherwise where there is one.
 template< typename S >

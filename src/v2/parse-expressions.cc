@@ -841,12 +841,25 @@ assignment_expression(parser_t &p)
     return { lhs.type, make_assign(std::move(*lhs.node), std::move(value)) };
 }
 
-// The comma operator, 6.5.18.
+// The comma operator, 6.5.18, left-associative, as rcc's loop reads
+// it: a, b, c is (a, b), c.  Each left operand is evaluated as a void
+// expression, p2, discarded()'s, at the comma, before its right operand
+// is read, so it may be void; the result is of the right operand's type
+// and value, which may be void too and is converted as discarded()
+// converts.  A comma is no constant expression, 6.6p3, so it carries no
+// mark of an overflow.
 operand_t
 expression(parser_t &p)
 {
     operand_t e = assignment_expression(p);
-    refuse_operator(p, { tok_t::comma });
+
+    while (accept(p, tok_t::comma)) {
+        expr_t lhs = discarded(std::move(e));
+
+        operand_t rhs = assignment_expression(p);
+        const type_t t = rhs.type;
+        e = { t, make_comma(std::move(lhs), discarded(std::move(rhs))) };
+    }
 
     return e;
 }

@@ -206,6 +206,14 @@ make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs)
     return rhs.self->right_of(op, view, lhs, rhs);
 }
 
+// One hop through the right operand's model, which knows its class
+// (3.3).
+expr_t
+make_comma(expr_t lhs, expr_t rhs)
+{
+    return rhs.self->comma(lhs, rhs);
+}
+
 namespace {
 
 // The arguments of a call, each in a hidden local of the call, numbered

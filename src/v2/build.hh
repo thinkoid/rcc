@@ -66,6 +66,11 @@ struct converted_argument_t
     sign_t sign;
 };
 
+// lhs, rhs, 6.5.18, of a left operand evaluated for its effect and a
+// right operand converted as an operand whose value may be read, the
+// comma's own.
+expr_t make_comma(expr_t lhs, expr_t rhs);
+
 // A call of the function named, 6.5.3.3, of its arguments, each stored
 // in a hidden local of the call, numbered from first: of a function
 // whose result is of the view result, and of a void function.

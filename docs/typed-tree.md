@@ -17,15 +17,15 @@ functions of a result of any integer type or `void` and of parameters
 of any integer type, whose locals are of the integer types, declared,
 assigned and returned, with parentheses, the casts, the unary
 operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
-`||` and calls of functions of a result of any integer type or `void`,
-to any depth, and the statements `if`, `else`, `switch` on an `int`
-with its `case` and `default` labels, `while`, `do`, `for` with a
-declaration or an expression first, `break`, `continue`, `goto` and
-labels, and `return` with a value or without, on both targets. Each
-mechanism below was compiled and run in a small model first; chapter 5
-says what the models showed and chapter 6 what nothing has shown. A
-statement marked *working* is a position taken and run, not yet
-agreed.
+`||`, the comma and calls of functions of a result of any integer type
+or `void`, to any depth, and the statements `if`, `else`, `switch` on
+an `int` with its `case` and `default` labels, `while`, `do`, `for`
+with a declaration or an expression first, `break`, `continue`, `goto`
+and labels, and `return` with a value or without, on both targets.
+Each mechanism below was compiled and run in a small model first;
+chapter 5 says what the models showed and chapter 6 what nothing has
+shown. A statement marked *working* is a position taken and run, not
+yet agreed.
 
 ## 1. The idea
 
@@ -256,6 +256,14 @@ call_t &, long)` and comes back as a member of a call.
   rcc's `pinned_by()` reads through a cast. It is a class and no
   node: a builder that returns the operand itself returns the node
   inside.
+- A comma keeps its right operand in its class, `comma_t< R >`: a
+  constant, a load of either where, or erased. It crosses to an
+  operator as a class of its own, so that x86-64's arithmetic,
+  divisions and shifts read `a + (b, c)` as `addl -12(%rbp), %eax`
+  after the comma's left operand, rcc's `operand_of()`; the operator
+  forms the load's address outside what its left operand holds. A
+  comparison, `&&` and `||` take a comma erased, and aarch64 writes
+  its value.
 - A builder may answer a question about constants and make the answer
   a parameter. A `switch`'s builder sorts its cases and asks rcc's
   `dispatch_of()` of them once, and `switch_t< form, defaulted,
@@ -815,6 +823,7 @@ each became.
 | whether an operator is a comparison, a division, a shift | a concept on the operator, which constrains the rows of its family |
 | `pins()` | a constant of the operator |
 | `pinned_by()` | the right operand's class, `top_t< F >`, kept through a conversion |
+| `operand_of()` | the class `comma_t< R >`, read by x86-64's niches |
 | `pinned_within()`, `moved_within()` | summaries, handed up through the handle, a line of x86-64 each; a call pins the result register in the first and moves nothing in the second |
 | `pinned()` in `rvalue()` | the row of a node whose instruction pins its result's register clears the reservation itself: the divisions', the call's |
 | `immediate()` in `initialize()` | the store's entry point, by overload on the value's type |
@@ -910,17 +919,19 @@ rows invented for the purpose.
   primary costs none; but every node type a builder can make is
   instantiated in `build.cc` with its rows of both targets, about
   2,500 binary node types now. With every builder's crossings
-  instantiated for every model, and a `shared_ptr` of each model's
-  own type, that unit took over two minutes and 12 GB; with the
-  crossings instantiated once for each class of operand, and one
-  `shared_ptr` for every model, it takes 40 seconds and 4 GB. What
-  remains is a model's own functions, and the instantiation nests as
-  deep as the longest chain of node types each first met inside the
-  one before it, about a hundred. Each where multiplies the classes
-  again: the load of a global is a class on both sides of every
-  operator, as the slot's is, so the second where took the binary
-  node types to about 4,500 and the unit to 73 seconds and 7.6 GB.
-  Pointers bring a third.
+  instantiated for every model, and a `shared_ptr` of each model's own
+  type, that unit took over two minutes and 12 GB; with the crossings
+  instantiated once for each class of operand, and one `shared_ptr`
+  for every model, it takes 40 seconds and 4 GB. What remains is a
+  model's own functions, and the instantiation nests as deep as the
+  longest chain of node types each first met inside the one before it,
+  about a hundred. Each where multiplies the classes again: the load
+  of a global is a class on both sides of every operator, as the
+  slot's is, so the second where took the binary node types to about
+  4,500 and the unit to 73 seconds and 7.6 GB. The comma's classes on
+  the right of x86-64's arithmetic, divisions and shifts took them to
+  about 6,100 and the unit to 112 seconds and 11.7 GB. Pointers bring
+  a third where.
 - The register state at a join. Whether an arm of `?:` leaves its
   value where the other arm's does is, in its hardest case, a fact of
   one moment of generation. No type, summary or context has it. Three

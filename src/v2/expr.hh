@@ -74,6 +74,7 @@ public:
     friend expr_t make_unary(unary_op_t op, view_t view, expr_t arg);
     friend expr_t
     make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs);
+    friend expr_t make_comma(expr_t lhs, expr_t rhs);
 };
 
 // An erased operand generates itself: the handle's own rows, the value
