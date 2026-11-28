@@ -737,13 +737,34 @@ require_integers(const token_t &at, const operand_t &lhs, const operand_t &rhs)
         fail(at, "operand of " + quoted(at.text) + " is a pointer");
 }
 
+// The operand of a binary operator whose marks of a kept cast the
+// result keeps, or null, l and r the operands' nodes as the operator
+// reads them: the builder leaves an operand beside the operator's
+// identity the node it was, x + 0, 0 | x, x * 1, x >> 0, so a cast
+// under it still stands under an index, widened_index()'s.  The parser
+// does not ask which constant an operator's identity is: beside any
+// constant the marks are handed on, and an index is refused sooner
+// than read wrongly.
+const operand_t *
+marked_operand(const operand_t &lhs,
+               const expr_t &l,
+               const operand_t &rhs,
+               const expr_t &r)
+{
+    if (constant_of(r))
+        return &lhs;
+
+    return constant_of(l) ? &rhs : nullptr;
+}
+
 // A binary operator of integers, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, its
 // token at, rcc's arithmetic(): the usual arithmetic conversions, each
 // operand converted to the common type, and the result of that type,
 // the operation at its view and by its sign, 6.5.6p4, 6.5.7p5,
 // 6.5.11p3, 6.5.12p3, 6.5.13p3.  rcc reads both values before it judges
 // their types, so a void one is the error first, require_value()'s, and
-// a pointer the next, require_integers()'s.
+// a pointer the next, require_integers()'s.  The result keeps the marks
+// of marked_operand()'s operand.
 operand_t
 arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -755,17 +776,22 @@ arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     expr_t l = convert_to(lhs, t);
     expr_t r = convert_to(rhs, t);
     const bool marked = overflowed(op, t, lhs, l, rhs, r);
+    const operand_t *kept = marked_operand(lhs, l, rhs, r);
 
     return { .type = t,
              .node = make_binary(by_sign(op, sign_of(t)), view_of(t),
                                  std::move(l), std::move(r)),
-             .overflowed = marked };
+             .overflowed = marked,
+             .kept_bits = kept ? kept->kept_bits : nullptr,
+             .sign_changed = kept && kept->sign_changed };
 }
 
 // << and >>, 6.5.8, its token at, rcc's shift(): each operand promoted
 // on its own, so the count keeps its promoted type, p3, and the result
 // of the promoted left operand's type, the operation at its view and by
-// its sign.  The errors are arithmetic()'s, in its order.
+// its sign.  The errors are arithmetic()'s, in its order.  Beside a
+// constant count the left operand's marks of a kept cast are the
+// result's, as marked_operand() has it.
 operand_t
 shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -777,11 +803,14 @@ shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     expr_t l = promote(lhs);
     expr_t r = promote(rhs);
     const bool marked = overflowed(op, t, lhs, l, rhs, r);
+    const bool counted = constant_of(r).has_value();
 
     return { .type = t,
              .node = make_binary(by_sign(op, sign_of(t)), view_of(t),
                                  std::move(l), std::move(r)),
-             .overflowed = marked };
+             .overflowed = marked,
+             .kept_bits = counted ? lhs.kept_bits : nullptr,
+             .sign_changed = counted && lhs.sign_changed };
 }
 
 // The operator of a multiplicative operator's token: * / %, a division
