@@ -17,23 +17,24 @@ expression, defined before their use, after it or nowhere in the unit,
 their data written after the functions; the functions of a result of
 any integer type, a pointer or `void` and of parameters of any integer
 type or pointers, whose locals are of the integer types, pointers to
-`int` and to such pointers, and arrays of `int` and of pointers,
-declared, assigned and returned, with parentheses, the casts, the
-unary operators `+ - ~ !`, `&` of a local and of the object a pointer
-points to, `*` read and written, and `sizeof`, `+ - * / % << >> & |
-^`, the comparisons, of pointers among them, pointer arithmetic, the
-subscript and the difference of two pointers, an array's decay as a
-value and an argument, its subscript and its `&`, `&&`, `||`, `?:` of
-arms of every integer type, the comma, the compound assignments and
-`++` and `--` of every integer type, and calls of functions of a
-result of any integer type, a pointer or `void`, to any depth, and the
-statements `if`, `else`, `switch` on every integer type with its
-`case` and `default` labels, `while`, `do`, `for` with a declaration
-or an expression first, `break`, `continue`, `goto` and labels, and
-`return` with a value or without, on both targets. Each mechanism
-below was compiled and run in a small model first; chapter 5 says what
-the models showed and chapter 6 what nothing has shown. A statement
-marked *working* is a position taken and run, not yet agreed.
+the integer types and to such pointers, and arrays of `int` and of
+pointers, declared, assigned and returned, with parentheses, the
+casts, the unary operators `+ - ~ !`, `&` of a local and of the object
+a pointer points to, `*` read and written, and `sizeof`, `+ - * / % <<
+>> & | ^`, the comparisons, of pointers among them, pointer
+arithmetic, the subscript and the difference of two pointers, an
+array's decay as a value and an argument, its subscript and its `&`,
+`&&`, `||`, `?:` of arms of every integer type, the comma, the
+compound assignments and `++` and `--` of every integer type, and
+calls of functions of a result of any integer type, a pointer or
+`void`, to any depth, and the statements `if`, `else`, `switch` on
+every integer type with its `case` and `default` labels, `while`,
+`do`, `for` with a declaration or an expression first, `break`,
+`continue`, `goto` and labels, and `return` with a value or without,
+on both targets. Each mechanism below was compiled and run in a small
+model first; chapter 5 says what the models showed and chapter 6 what
+nothing has shown. A statement marked *working* is a position taken
+and run, not yet agreed.
 
 ## 1. The idea
 
@@ -1198,11 +1199,10 @@ rows invented for the purpose.
   pointer of static storage, the address of an object of static
   storage and of a function; an operator on a pointer constant; a
   pointer arm of a `?:`, and `++`, `--` and the compound assignments
-  of a pointer; `void *`, qualified pointers and pointers to the other
-  types; arrays of arrays, of the other types and of static storage,
-  variable length arrays, an array's initializer, and a frame past a
-  target's limit, which an array reaches and rcc refuses in its own
-  words.
+  of a pointer; `void *` and qualified pointers; arrays of arrays, of
+  the other types and of static storage, variable length arrays, an
+  array's initializer, and a frame past a target's limit, which an
+  array reaches and rcc refuses in its own words.
 - `({ })`. It waits until the concepts around it are clear.
 - Two targets that want shapes of one subtree that do not nest. The
   address family is where to look.

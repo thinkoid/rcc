@@ -611,12 +611,12 @@ refuse_parenthesized(const parser_t &p)
 
 // The pointers before a declarator's name, 6.7.7.2, rcc's pointer():
 // each '*' a pointer to the type so far, so int **pp is a pointer to a
-// pointer to int.  The pointees rcc-v2 takes are int, the pointers and
-// the arrays of either, which a typedef name names: a pointer to void,
-// to a function, which a typedef name may name, to an enum in its own
-// list, which rcc takes, or to another integer type is not yet at its
-// '*', and so is a qualifier after one, which qualifies the pointer,
-// p1.
+// pointer to int.  The pointees rcc-v2 takes are the integer types, the
+// enumerated ones among them, the pointers, and the arrays a typedef
+// name names: a pointer to void, to a function, which a typedef name
+// may name, or to an enum in its own list, which rcc takes, is not yet
+// at its '*', and so is a qualifier after one, which qualifies the
+// pointer, p1.
 type_t
 pointer(parser_t &p, type_t t)
 {
@@ -629,9 +629,6 @@ pointer(parser_t &p, type_t t)
             not_yet(star, "pointer to a function");
 
         refuse_not_yet_type(star, t);
-
-        if (!is< pointer_t >(t) && !is< array_t >(t) && t != int_type())
-            not_yet(star, "pointer to an integer type other than 'int'");
 
         t = make_pointer(std::move(t));
 

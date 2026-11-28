@@ -967,9 +967,9 @@ shift_expression(parser_t &p)
 // function, 6.5.9p2; anything else is an error at the operator, in
 // rcc's words, in its order.  Pointers compare as addresses (G7).  A
 // function designator compared for equality, which rcc compiles, is not
-// yet.  The pointees are int, an enumerated type compatible with int,
-// and the pointers, so compatible ones are one type to the machine, the
-// composite's, 6.2.7p3, and the operands convert to it as they are.
+// yet.  The pointees are the integer types and the pointers, so
+// compatible ones are one type to the machine, the composite's, 6.2.7p3,
+// and the operands convert to it as they are.
 type_t
 common_pointer(binary_op_t op,
                const token_t &at,
