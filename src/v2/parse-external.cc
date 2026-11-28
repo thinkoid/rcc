@@ -68,18 +68,20 @@ refuse_static_main(const specifiers_t &spec, const declarator_t &d)
 // The earlier declaration of the name among names, the file's functions
 // or its objects, met again, or null when there is none, rcc's
 // earlier_declaration() and redeclared(): a function, an object and a
-// typedef name are three kinds of ordinary identifier, so a name of
-// others, the other kind of entity, or of the file's scope, a typedef
-// name, declared again is a redefinition, and two declarations of one
-// kind are of compatible types, 6.7.1p5, or a conflict, each said at the
-// later name.  The earlier declaration keeps its type, the composite of two
-// compatible types being either: two integer types are compatible only
-// where they are of one kind, rcc's related(), and so one type, and two
-// function types where their results and their parameters are.  Two
-// basic types of one representation are distinct types, 6.2.5p18: char,
-// signed char and unsigned char are three, p20, and long and long long
-// two, though the machine takes the two of one width and sign for one
-// type.
+// typedef name or an enumeration constant are kinds of ordinary
+// identifier, so a name of others, the other kind of entity, or of the
+// file's scope, a typedef name or a constant, declared again is a
+// redefinition, and two declarations of one kind are of compatible
+// types, 6.7.1p5, or a conflict, each said at the later name.  The
+// entity takes the composite of the two from then on, 6.2.7p5, which
+// for an enumerated type and its integer type is the integer type,
+// composite()'s, so a third declaration of another enumeration of that
+// integer type agrees.  Two integer types are compatible only where
+// they are of one kind, rcc's related(), or an enumerated type and its
+// integer type.  Two basic types of one representation are distinct
+// types, 6.2.5p18: char, signed char and unsigned char are three, p20,
+// and long and long long two, though the machine takes the two of one
+// width and sign for one type.
 template< typename N, typename O >
 N *
 earlier_declaration(std::unordered_map< std::string_view, N > &names,
@@ -88,7 +90,7 @@ earlier_declaration(std::unordered_map< std::string_view, N > &names,
                     const token_t &name,
                     const type_t &t)
 {
-    if (others.contains(name.text) || file.contains(name.text))
+    if (others.contains(name.text) || file.names.contains(name.text))
         fail(name, "redefinition of " + quoted(name.text));
 
     const auto it = names.find(name.text);
@@ -97,6 +99,8 @@ earlier_declaration(std::unordered_map< std::string_view, N > &names,
 
     if (!compatible(it->second.type, t))
         fail(name, "conflicting types for " + quoted(name.text));
+
+    it->second.type = composite(it->second.type, t);
 
     return &it->second;
 }
@@ -352,16 +356,16 @@ external_declarator(parser_t &p,
 }
 
 // A function definition, or a declaration of functions, of objects and
-// of typedef names, 6.9.1p1.  extern on a function changes nothing: a
-// function declared without a storage class has the linkage extern
-// gives it, 6.2.2p5, and static gives it internal linkage, p3, on a
-// declaration and on a definition alike.  rcc reads __asm__,
-// __extension__ and a static assertion before the declaration
-// specifiers, and refuses the first in these words.  A declarator that
-// writes a parameter list and that a '{' follows is a definition, but
-// for a typedef's, and a definition is one declarator and its body; the
-// declarators of a declaration are separated by commas and end at its
-// ';'.
+// of typedef names, or of an enum's tag and constants alone, 6.7.1p2,
+// 6.9.1p1.  extern on a function changes nothing: a function declared
+// without a storage class has the linkage extern gives it, 6.2.2p5, and
+// static gives it internal linkage, p3, on a declaration and on a
+// definition alike.  rcc reads __asm__, __extension__ and a static
+// assertion before the declaration specifiers, and refuses the first in
+// these words.  A declarator that writes a parameter list and that a
+// '{' follows is a definition, but for a typedef's, and a definition is
+// one declarator and its body; the declarators of a declaration are
+// separated by commas and end at its ';'.
 void
 external_declaration(parser_t &p)
 {
@@ -376,6 +380,9 @@ external_declaration(parser_t &p)
         not_yet(t, quoted(t.text) + " declaration");
 
     const specifiers_t spec = declaration_specifiers(p);
+    if (spec.tagged && accept(p, tok_t::semicolon))
+        return;
+
     declarator_t d = declarator(p, spec.type);
 
     if (lists_parameters(spec, d) && !declared(spec, tok_t::kw_typedef) &&

@@ -23,7 +23,8 @@ namespace rcc {
 namespace {
 
 // An identifier, 6.5.2p3: a local's operand, a copy of what its
-// declaration made (docs/typed-tree.md 4.5); an object the file
+// declaration made (docs/typed-tree.md 4.5), or an enumeration
+// constant's, the literal of its value, 6.4.4.4p3; an object the file
 // declares, a copy of the leaf its first declaration made, whether the
 // unit defines the object or not, which generation asks; or a name the
 // file declares as a function, a function designator of the function's
@@ -463,7 +464,8 @@ address_of(parser_t &p)
 
 // The size of the type t, 6.5.4.4p2, rcc's sizeof_(): a constant of
 // type unsigned long, size_t on LP64, p5, which no overflow marks.  void
-// and a function have none, p1, an error at the sizeof, op.
+// and a function have none, p1, an error at the sizeof, op, and an enum
+// in its own list, incomplete, is refuse_not_yet_type()'s there.
 operand_t
 sizeof_(const token_t &op, const type_t &t)
 {
@@ -472,6 +474,8 @@ sizeof_(const token_t &op, const type_t &t)
 
     if (is< function_t >(t))
         fail(op, "invalid application of 'sizeof' to a function type");
+
+    refuse_not_yet_type(op, t);
 
     return { make_int(64, false, int_kind_t::unsigned_long),
              make_literal(size_of(t), view_t::i64) };
@@ -541,12 +545,15 @@ unary_expression(parser_t &p)
 // no constant, which rcc-v2 does not make yet.  A void operand is an
 // error at the '(', require_value()'s, and a function designator is not
 // yet.  A function type, which a typedef name may name, is no scalar
-// type, p2, rcc's error at the '(' once the operand is read.
+// type, p2, rcc's error at the '(' once the operand is read, and an enum
+// in its own list is refuse_not_yet_type()'s there.
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
     if (is< function_t >(t))
         fail(open, "cast to a type that is not a scalar");
+
+    refuse_not_yet_type(open, t);
 
     const operand_t value { arg.type, rvalue(open, arg) };
 
@@ -771,8 +778,9 @@ shift_expression(parser_t &p)
 // function, 6.5.9p2; anything else is an error at the operator, in
 // rcc's words, in its order.  Pointers compare as addresses (G7).  A
 // function designator compared for equality, which rcc compiles, is not
-// yet.  The pointees are int and the pointers, so compatible ones are
-// one type, the composite, 6.2.7p3.
+// yet.  The pointees are int, an enumerated type compatible with int,
+// and the pointers, so compatible ones are one type to the machine, the
+// composite's, 6.2.7p3, and the operands convert to it as they are.
 type_t
 common_pointer(binary_op_t op,
                const token_t &at,

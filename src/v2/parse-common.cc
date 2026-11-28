@@ -160,6 +160,13 @@ pointee_of(const type_t &t)
     return *as< pointer_t >(t).pointee;
 }
 
+void
+refuse_not_yet_type(const token_t &at, const type_t &t)
+{
+    if (is< not_yet_t >(t))
+        not_yet(at, as< not_yet_t >(t).what.words);
+}
+
 //
 // values
 //
@@ -268,7 +275,7 @@ const symbol_t *
 lookup(const parser_t &p, std::string_view name)
 {
     for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope)
-        if (const auto it = scope->find(name); it != scope->end())
+        if (const auto it = scope->names.find(name); it != scope->names.end())
             return &it->second;
 
     return nullptr;
@@ -280,13 +287,13 @@ lookup(const parser_t &p, std::string_view name)
 int
 declare(parser_t &p, const token_t &name, const type_t &type)
 {
-    if (p.scopes.back().contains(name.text))
+    if (p.scopes.back().names.contains(name.text))
         fail(name, "redefinition of " + quoted(name.text));
 
     const int slot = p.locals++;
     const operand_t local { type,
                             make_local(slot, view_of(type), sign_of(type)) };
-    p.scopes.back().emplace(name.text, symbol_t { local });
+    p.scopes.back().names.emplace(name.text, symbol_t { local });
 
     return slot;
 }

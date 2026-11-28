@@ -3,19 +3,21 @@
 // 6.7: the declarations, of which rcc-v2 takes the declaration
 // specifiers static, extern, typedef, void and the type specifiers of
 // the integer types from char to unsigned long long, in any order and
-// spelling, and a typedef name, the pointers to int and to pointers,
-// the declarators of a function and of an object, the declaration in a
-// block and in a for's first clause of objects of those types, each
-// with an initializer or without, the type definitions, the type name
-// of a cast and of sizeof, and the initializer of an object of static
-// storage; it refuses the rest as not yet.  rcc reads more of each than
-// rcc-v2 does, so each is read as far as rcc would read it, and what
-// rcc would take is refused before an error rcc would not say.
+// spelling, a typedef name and an enum specifier, the pointers to int
+// and to pointers, the declarators of a function and of an object, the
+// declaration in a block and in a for's first clause of objects of
+// those types, each with an initializer or without, the type
+// definitions, the type name of a cast and of sizeof, and the
+// initializer of an object of static storage; it refuses the rest as
+// not yet.  rcc reads more of each than rcc-v2 does, so each is read as
+// far as rcc would read it, and what rcc would take is refused before
+// an error rcc would not say.
 
 #include "parse-common.hh"
 
 #include "build.hh"
 
+#include <algorithm>
 #include <cstddef>
 #include <format>
 #include <optional>
@@ -94,6 +96,20 @@ named_type(const parser_t &p, const token_t &t)
     const symbol_t *sym = lookup(p, t.text);
 
     return sym && sym->type_name ? &sym->operand.type : nullptr;
+}
+
+// Whether the current scope declares the name already as an ordinary
+// identifier, 6.2.3p1, which no other declaration of no linkage
+// declares again there, 6.7.1p4: among its names, and the file's scope
+// among the file's functions and objects too.
+bool
+declares(const parser_t &p, std::string_view name)
+{
+    if (p.scopes.back().names.contains(name))
+        return true;
+
+    return p.scopes.size() == 1 &&
+           (p.objects.contains(name) || p.functions.contains(name));
 }
 
 } // namespace
@@ -239,6 +255,254 @@ specified(const parser_t &p, const counts_t &n)
     return of(32, int_kind_t::int_, int_kind_t::unsigned_);
 }
 
+// An enumeration constant while its list is read: its name, its type
+// and its value exactly, which the enumerated type must hold, rcc's
+// enumerator_t.
+struct enumerator_t
+{
+    std::string_view name;
+    type_t type;
+    exact_t value;
+};
+
+// What a use of an enumeration constant copies: the literal of its
+// value, of its type, 6.4.4.4p2, so no name in the tree is an
+// enumeration constant's, and the constant is an integer constant
+// expression wherever one is read.
+operand_t
+constant(const type_t &t, exact_t value)
+{
+    return { t, literal_of(t, value) };
+}
+
+// The type and the value of an enumeration constant while its list is
+// read, 6.7.3.3p10, p12, rcc's enumerator_value().  After = they are
+// those of the integer constant expression, p4, but an int where int
+// holds the value: its value read through the model, constant_of(), an
+// error at its first token where it folds to no constant or to one of no
+// integer type, warned of where a signed overflow reached it,
+// warn_overflowed().  Without =, the first constant is the int 0, and
+// each other the previous one's value plus one, in the previous one's
+// type, or in the 64-bit type of its sign where that type does not hold
+// the sum; no type holds a sum past the 64-bit types, an error at the
+// name, p12 and its footnote.
+enumerator_t
+enumerator_value(parser_t &p, const token_t &name, const enumerator_t *previous)
+{
+    if (accept(p, tok_t::assign)) {
+        const token_t &start = peek(p);
+        const operand_t e = conditional_expression(p);
+        const std::optional< long long > bits = constant_of(rvalue(start, e));
+        if (!bits || !is< int_t >(e.type))
+            fail(start,
+                 "enumerator value is not an integer constant expression");
+
+        warn_overflowed(p, start, e);
+
+        const exact_t value = exact_value(e.type, *bits);
+        if (holds(int_type(), value))
+            return { name.text, int_type(), value };
+
+        return { name.text, e.type, value };
+    }
+
+    if (!previous)
+        return { name.text, int_type(), 0 };
+
+    const exact_t next = previous->value + 1;
+    if (holds(previous->type, next))
+        return { name.text, previous->type, next };
+
+    const bool is_signed = as< int_t >(previous->type).is_signed;
+    const type_t wider =
+        make_int(64, is_signed,
+                 is_signed ? int_kind_t::long_ : int_kind_t::unsigned_long);
+    if (!holds(wider, next))
+        fail(name, "value of " + quoted(name.text) +
+                       " is too large for any integer type");
+
+    return { name.text, wider, next };
+}
+
+// One or more enumerators, the list perhaps ending in a comma,
+// 6.7.3.3p1, rcc's enumerator_list().  Each declares its enumeration
+// constant as an ordinary identifier, 6.2.3p1, in the current scope,
+// once there, 6.7.1p4, else an error at the second, of the type and the
+// value enumerator_value() gives it.  Its scope begins after its
+// enumerator, 6.2.1p7, so its own value cannot name it and the next
+// one's can.
+std::vector< enumerator_t >
+enumerator_list(parser_t &p)
+{
+    std::vector< enumerator_t > list;
+
+    do {
+        const token_t &name =
+            expect(p, tok_t::identifier, "expected identifier");
+        if (declares(p, name.text))
+            fail(name, "redefinition of " + quoted(name.text));
+
+        enumerator_t e =
+            enumerator_value(p, name, list.empty() ? nullptr : &list.back());
+        p.scopes.back().names.emplace(
+            name.text, symbol_t { .operand = constant(e.type, e.value) });
+        list.push_back(std::move(e));
+    } while (accept(p, tok_t::comma) && peek(p).kind != tok_t::rbrace);
+
+    return list;
+}
+
+// The integer type compatible with an enumerated type, 6.7.3.3p13, the
+// choice J.3.10 leaves to the implementation, as clang makes it on both
+// targets, rcc's compatible_type(): unsigned int when no value is
+// negative and it holds every one, else unsigned long; int when a value
+// is negative and int holds every one, else long.  No type holds a
+// negative value and one past LONG_MAX together, p4, an error at the
+// tag, or at the keyword of an enum without one.
+type_t
+compatible_type(const token_t &at, const std::vector< enumerator_t > &list)
+{
+    exact_t least = list.front().value;
+    exact_t most = least;
+    for (const enumerator_t &e : list) {
+        least = std::min(least, e.value);
+        most = std::max(most, e.value);
+    }
+
+    const bool negative = least < 0;
+    const type_t types[] = {
+        make_int(32, negative,
+                 negative ? int_kind_t::int_ : int_kind_t::unsigned_),
+        make_int(64, negative,
+                 negative ? int_kind_t::long_ : int_kind_t::unsigned_long)
+    };
+
+    for (const type_t &t : types)
+        if (holds(t, least) && holds(t, most))
+            return t;
+
+    const std::string what =
+        at.kind == tok_t::identifier ? "enum " + quoted(at.text) : "the enum";
+    fail(at, "no integer type holds every value of " + what);
+}
+
+// The enumerated type a list defines, 6.2.5p21, rcc's enumerated(): the
+// machine's view and the kind of its compatible integer type, and an
+// identity of its own, which compatible() and same_type() read and no
+// row does.
+type_t
+enumerated(parser_t &p, const type_t &compatible)
+{
+    const int_t &t = as< int_t >(compatible);
+
+    return make_int(t.width, t.is_signed, t.kind, ++p.identities);
+}
+
+// The constants of an enumeration whose list is complete take its
+// member type, 6.7.3.3p15, rcc's complete_constants(): int when int
+// holds every value, else the enumerated type, t; each a literal of that
+// type again, in the current scope, which declared them.
+void
+complete_constants(parser_t &p,
+                   const std::vector< enumerator_t > &list,
+                   const type_t &t)
+{
+    const bool ints = std::ranges::all_of(
+        list, [](const enumerator_t &e) { return holds(int_type(), e.value); });
+    const type_t member = ints ? int_type() : t;
+
+    for (const enumerator_t &e : list)
+        p.scopes.back().names.at(e.name).operand = constant(member, e.value);
+}
+
+// C23's enum type specifier, a ':' and a type's specifiers after enum or
+// its tag, 6.7.3.3p1, which fixes the enumerated type, p2, is not yet in
+// rcc's words, rcc's refuse_fixed_underlying_type().
+void
+refuse_fixed_underlying_type(const parser_t &p)
+{
+    if (peek(p).kind == tok_t::colon && is_declaration_start(p, 1))
+        not_yet(peek(p), "enum with a fixed underlying type");
+}
+
+// The type an enum's tag without a list names, rcc's tagged_type(): the
+// innermost declaration of the tag in scope, 6.7.3.4p13, which is an
+// error before the enumeration's list, p2, said at the tag.  GNU C's
+// forward declaration, enum e;, is not taken.
+type_t
+tagged_type(const parser_t &p, const token_t &tag)
+{
+    for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope)
+        if (const auto it = scope->tags.find(tag.text); it != scope->tags.end())
+            return it->second;
+
+    fail(tag, "enum " + quoted(tag.text) + " used before its list");
+}
+
+// The tag of an enum whose list follows, declared in the current scope
+// from the list's '{' on, 6.2.1p7, as the incomplete type it is until
+// the '}', 6.7.3.4p5, rcc's open_enum_tag(): a not-yet type, whose every
+// use the list makes is refused by its words, refuse_not_yet_type().  A
+// second list of the tag in one scope is valid where it defines the
+// same content, p1, which rcc does not compare, so it is not yet in
+// rcc's words, at the tag.
+void
+open_enum_tag(parser_t &p, const token_t &tag)
+{
+    auto &tags = p.scopes.back().tags;
+    if (tags.contains(tag.text))
+        not_yet(tag, "enum " + quoted(tag.text) + " defined again");
+
+    tags.emplace(tag.text,
+                 make_not_yet(++p.identities, { "enum " + quoted(tag.text) +
+                                                " in its own list" }));
+}
+
+// enum, then a tag, an enumerator list in braces, or both, 6.7.3.3p1,
+// rcc's enum_specifier().  A list defines an enumerated type, and the
+// tree keeps the integer type compatible with it, compatible_type()'s,
+// of an identity of its own, enumerated()'s, so an object, a parameter,
+// a result, a cast, sizeof, a switch and the arithmetic of one are its
+// integer type's; its constants take the types and the values of p10,
+// p12 and p15, and the tag, in the current scope, the enumerated type.
+// A tag without a list names the type its list defined,
+// tagged_type()'s.  GNU C's attributes after the keyword are not yet,
+// and so are those after the list, which the specifiers refuse.
+type_t
+enum_specifier(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (peek(p).kind == tok_t::kw_attribute)
+        not_yet(peek(p), quoted(peek(p).text) + " in an enum specifier");
+
+    refuse_fixed_underlying_type(p);
+    const token_t *tag = nullptr;
+    if (peek(p).kind != tok_t::lbrace)
+        tag =
+            &expect(p, tok_t::identifier,
+                    "expected identifier or '{' after " + quoted(keyword.text));
+
+    refuse_fixed_underlying_type(p);
+
+    if (peek(p).kind != tok_t::lbrace)
+        return tagged_type(p, *tag);
+
+    if (tag)
+        open_enum_tag(p, *tag);
+
+    advance(p);
+    const std::vector< enumerator_t > list = enumerator_list(p);
+    expect(p, tok_t::rbrace, "expected '}' at end of enumerator list");
+
+    const type_t t = enumerated(p, compatible_type(tag ? *tag : keyword, list));
+    complete_constants(p, list, t);
+
+    if (tag)
+        p.scopes.back().tags.at(tag->text) = t;
+
+    return t;
+}
+
 } // namespace
 
 bool
@@ -257,22 +521,24 @@ refuse_static_pointer(const token_t &name, const type_t &t)
 // The declaration specifiers: one of the sets of 6.7.3.1p2 in any
 // order, and the storage class static, extern or typedef anywhere among
 // them, 6.7.2p1, read as rcc reads them, up to the first token that is
-// none.  A typedef name in scope is the whole type specifier, 6.7.3.1p2,
-// where it is the first: after another, an identifier is the
-// declarator's name, so unsigned T declares a T.  Each type specifier is
-// refused where it cannot join those before it, and a storage class
-// where one came before it, 6.7.2p2, in rcc's words.  Any other
-// specifier is not yet where it stands, and so is a reserved identifier
-// in place of the first type specifier, which may name a type the
-// compiler declares; any other token there is rcc's error, another
-// identifier's among them.
+// none.  A typedef name in scope is the whole type specifier,
+// 6.7.3.1p2, where it is the first: after another, an identifier is the
+// declarator's name, so unsigned T declares a T.  So is an enum
+// specifier, enum_specifier()'s, which another may stand neither before
+// nor after.  Each type specifier is refused where it cannot join those
+// before it, and a storage class where one came before it, 6.7.2p2, in
+// rcc's words.  Any other specifier is not yet where it stands, and so
+// is a reserved identifier in place of the first type specifier, which
+// may name a type the compiler declares; any other token there is rcc's
+// error, another identifier's among them.
 specifiers_t
 declaration_specifiers(parser_t &p)
 {
     const token_t *storage_class = nullptr;
     counts_t counts;
     const token_t *first = nullptr;
-    const type_t *named = nullptr;
+    std::optional< type_t > whole;
+    bool tagged = false;
 
     for (;;) {
         const token_t &t = peek(p);
@@ -286,8 +552,19 @@ declaration_specifiers(parser_t &p)
         }
 
         if (!first && named_type(p, t)) {
-            named = named_type(p, t);
+            whole = *named_type(p, t);
             first = &advance(p);
+            continue;
+        }
+
+        if (t.kind == tok_t::kw_enum) {
+            if (first)
+                fail(t, "cannot combine " + quoted(t.text) +
+                            " with the type specifiers before it");
+
+            first = &t;
+            whole = enum_specifier(p);
+            tagged = true;
             continue;
         }
 
@@ -295,7 +572,7 @@ declaration_specifiers(parser_t &p)
             break;
 
         advance(p);
-        if (cannot_join(counts, t) || named)
+        if (cannot_join(counts, t) || whole)
             fail(t, "cannot combine " + quoted(t.text) +
                         " with the type specifiers before it");
 
@@ -310,7 +587,8 @@ declaration_specifiers(parser_t &p)
     if (!first)
         fail(t, "expected a type specifier");
 
-    return { storage_class, *first, named ? *named : specified(p, counts) };
+    return { storage_class, *first, whole ? *whole : specified(p, counts),
+             tagged };
 }
 
 namespace {
@@ -326,9 +604,10 @@ refuse_parenthesized(const parser_t &p)
 // The pointers before a declarator's name, 6.7.7.2, rcc's pointer():
 // each '*' a pointer to the type so far, so int **pp is a pointer to a
 // pointer to int.  The pointees rcc-v2 takes are int and the pointers:
-// a pointer to void, to a function, which a typedef name may name, or to
-// another integer type is not yet at its '*', and so is a qualifier
-// after one, which qualifies the pointer, p1.
+// a pointer to void, to a function, which a typedef name may name, to
+// an enum in its own list, which rcc takes, or to another integer type
+// is not yet at its '*', and so is a qualifier after one, which
+// qualifies the pointer, p1.
 type_t
 pointer(parser_t &p, type_t t)
 {
@@ -339,6 +618,8 @@ pointer(parser_t &p, type_t t)
 
         if (is< function_t >(t))
             not_yet(star, "pointer to a function");
+
+        refuse_not_yet_type(star, t);
 
         if (!is< pointer_t >(t) && t != int_type())
             not_yet(star, "pointer to an integer type other than 'int'");
@@ -407,10 +688,12 @@ parameter_declaration(parser_t &p)
 // A parameter's name, declared in the scope of its list, which the
 // parameters of one list share, 6.7.1p4, 6.2.1p4, whether a body
 // follows or not: a name declared twice there is an error at the
-// second.  The parameter's leaf is a local's, its slot numbered by its
-// place in the list, so the parameters of a definition are its first
-// locals, and its body's are numbered after them (docs/typed-tree.md
-// 4.5).
+// second, which names no parameter where the first is an enumeration
+// constant a parameter's type declared, the one name of the list whose
+// operand is a constant.  The parameter's leaf is a local's, its slot
+// numbered by its place in the list, so the parameters of a definition
+// are its first locals, and its body's are numbered after them
+// (docs/typed-tree.md 4.5).
 void
 declare_parameter(parser_t &p, const parameter_t &param, int index)
 {
@@ -418,13 +701,16 @@ declare_parameter(parser_t &p, const parameter_t &param, int index)
         return;
 
     scope_t &scope = p.scopes.back();
-    if (scope.contains(param.name->text))
+    if (const auto it = scope.names.find(param.name->text);
+        it != scope.names.end())
         fail(*param.name,
-             "redefinition of parameter " + quoted(param.name->text));
+             constant_of(*it->second.operand.node) ?
+                 "redefinition of " + quoted(param.name->text) :
+                 "redefinition of parameter " + quoted(param.name->text));
 
     const operand_t local { param.type, make_local(index, view_of(param.type),
                                                    sign_of(param.type)) };
-    scope.emplace(param.name->text, symbol_t { local });
+    scope.names.emplace(param.name->text, symbol_t { local });
 }
 
 // (void), (), or parameters, read in the scope the caller opened for
@@ -656,7 +942,7 @@ static_local(parser_t &p, const declarator_t &d)
     refuse_static_pointer(d.name, d.type);
 
     scope_t &scope = p.scopes.back();
-    if (scope.contains(d.name.text))
+    if (scope.names.contains(d.name.text))
         fail(d.name, "redefinition of " + quoted(d.name.text));
 
     const std::string label = static_label(p, d.name.text);
@@ -664,7 +950,7 @@ static_local(parser_t &p, const declarator_t &d)
     const sign_t sign = sign_of(d.type);
 
     const operand_t object { d.type, make_global(label, view, sign) };
-    scope.emplace(d.name.text, symbol_t { object });
+    scope.names.emplace(d.name.text, symbol_t { object });
 
     const std::size_t index = p.unit.objects.size();
     p.unit.objects.push_back({ label, false, view, sign });
@@ -702,8 +988,8 @@ linked_entity(parser_t &p, std::string_view name, bool &external)
     external = true;
 
     for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope) {
-        const auto it = scope->find(name);
-        if (it == scope->end())
+        const auto it = scope->names.find(name);
+        if (it == scope->names.end())
             continue;
 
         if (!it->second.linked)
@@ -724,13 +1010,13 @@ linked_entity(parser_t &p, std::string_view name, bool &external)
 // in an enclosing block, after it at file scope, or in another block,
 // since every declaration of a name of external linkage denotes one
 // entity, 6.2.2p2.  Every declaration of the entity is of its kind, its
-// type, 6.2.7p2, and its linkage, 6.2.2p7: a function of the name is a
-// redefinition, as redeclared() has it.  A block declares the name
-// once, but for the same entity again, 6.7.1p4.  The declaration takes
-// no initializer, 6.7.11p6, and makes no object and no statement: the
-// block's scope maps the name to the entity's leaf, and a new entity,
-// of external linkage, is the unit's, which a later declaration at file
-// scope adopts.
+// type, 6.2.7p2, whose composite it takes, p5, and its linkage,
+// 6.2.2p7: a function of the name is a redefinition, as redeclared()
+// has it.  A block declares the name once, but for the same entity
+// again, 6.7.1p4.  The declaration takes no initializer, 6.7.11p6, and
+// makes no object and no statement: the block's scope maps the name to
+// the entity's leaf, and a new entity, of external linkage, is the
+// unit's, which a later declaration at file scope adopts.
 void
 linked_declaration(parser_t &p, const declarator_t &d)
 {
@@ -747,8 +1033,8 @@ linked_declaration(parser_t &p, const declarator_t &d)
     refuse_visibility(d.name, external);
 
     scope_t &scope = p.scopes.back();
-    const auto here = scope.find(d.name.text);
-    if ((here != scope.end() && !here->second.linked) ||
+    const auto here = scope.names.find(d.name.text);
+    if ((here != scope.names.end() && !here->second.linked) ||
         p.functions.contains(d.name.text))
         fail(d.name, "redefinition of " + quoted(d.name.text));
 
@@ -757,6 +1043,7 @@ linked_declaration(parser_t &p, const declarator_t &d)
             fail(d.name, "conflicting types for " + quoted(d.name.text));
 
         require_linkage(d.name, entity->external, external);
+        entity->type = composite(entity->type, d.type);
     }
     else {
         expr_t leaf =
@@ -767,7 +1054,7 @@ linked_declaration(parser_t &p, const declarator_t &d)
     }
 
     const operand_t object { entity->type, entity->leaf };
-    scope.emplace(d.name.text, symbol_t { object, true });
+    scope.names.emplace(d.name.text, symbol_t { object, true });
 }
 
 } // namespace
@@ -787,17 +1074,16 @@ refuse_typedef_function(const specifiers_t &spec, const declarator_t &d)
 }
 
 // rcc's type_definition(): the name is declared in the current scope,
-// the file's or a block's, as an ordinary identifier, 6.7.9p3, so a name
-// that scope declares as anything else, or the file's scope as an
-// object or a function, is a redefinition, and a typedef name declared
-// again there denotes the same type, 6.7.1p4, rcc's same_type(), else
-// rcc's error, each said at the later name.  The name is in scope from
-// the end of its declarator, 6.2.1p7.  It has no object, so the
-// declaration makes no statement, and takes no initializer, which gives
-// an object's value, 6.7.11p9, nor a function body, since a function
-// definition's storage class is extern or static, 6.9.2p4, each an
-// error at its first token.  GNU C's attributes and an assembler name
-// after the declarator are not yet.
+// the file's or a block's, as an ordinary identifier, 6.7.9p3, so a
+// typedef name declared again there denotes the same type, 6.7.1p4,
+// rcc's same_type(), else rcc's error, and a name the scope declares as
+// anything else, declares()'s, is a redefinition, each said at the
+// later name.  The name is in scope from the end of its declarator,
+// 6.2.1p7.  It has no object, so the declaration makes no statement,
+// and takes no initializer, which gives an object's value, 6.7.11p9,
+// nor a function body, since a function definition's storage class is
+// extern or static, 6.9.2p4, each an error at its first token.  GNU C's
+// attributes and an assembler name after the declarator are not yet.
 void
 type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -811,26 +1097,22 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         fail(peek(p),
              "typedef " + quoted(d.name.text) + " cannot have a function body");
 
-    scope_t &scope = p.scopes.back();
-    if (&scope == &p.scopes.front() &&
-        (p.objects.contains(d.name.text) || p.functions.contains(d.name.text)))
-        fail(d.name, "redefinition of " + quoted(d.name.text));
+    auto &names = p.scopes.back().names;
+    const auto earlier = names.find(d.name.text);
+    if (earlier != names.end() && earlier->second.type_name) {
+        if (!same_type(earlier->second.operand.type, d.type))
+            fail(d.name, "redefinition of typedef " + quoted(d.name.text) +
+                             " with another type");
 
-    const auto earlier = scope.find(d.name.text);
-    if (earlier == scope.end()) {
-        scope.emplace(
-            d.name.text,
-            symbol_t { .operand = { .type = d.type, .node = std::nullopt },
-                       .type_name = true });
         return;
     }
 
-    if (!earlier->second.type_name)
+    if (declares(p, d.name.text))
         fail(d.name, "redefinition of " + quoted(d.name.text));
 
-    if (!same_type(earlier->second.operand.type, d.type))
-        fail(d.name, "redefinition of typedef " + quoted(d.name.text) +
-                         " with another type");
+    names.emplace(d.name.text, symbol_t { .operand = { .type = d.type,
+                                                       .node = std::nullopt },
+                                          .type_name = true });
 }
 
 namespace {
@@ -894,8 +1176,9 @@ refuse_declaration_start(const parser_t &p)
 
 // A declaration in a block, 6.7.1p1, after what refuse_declaration_start()
 // refuses: of locals, of static objects, of extern ones or of typedef
-// names; an object of type void is not yet, refused at its specifier,
-// and a typedef name of type void is taken.
+// names, or of an enum's tag and constants alone, 6.7.1p2, which makes
+// no statement; an object of type void is not yet, refused at its
+// specifier, and a typedef name of type void is taken.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
@@ -905,6 +1188,9 @@ declaration(parser_t &p)
     if (is< void_t >(spec.type) && !declared(spec, tok_t::kw_typedef))
         not_yet(spec.specifier,
                 "declaration specifier " + quoted(spec.specifier.text));
+
+    if (spec.tagged && accept(p, tok_t::semicolon))
+        return { };
 
     return init_declarator_list(p, spec, false);
 }

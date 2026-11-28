@@ -2,9 +2,11 @@
 
 // 6.4.4.2 and 6.4.4.5: an integer constant's value and type, read from
 // its spelling as rcc's parser reads it, and the operand of a constant
-// of any of its types; a character constant of no prefix; and 6.6p4, the
-// mark of a constant reached through a signed overflow, which every
-// operator's production sets and a constant expression warns of.
+// of any of its types, with a constant's value exactly and its literal,
+// which an enumeration constant's are too; a character constant of no
+// prefix; and 6.6p4, the mark of a constant reached through a signed
+// overflow, which every operator's production sets and a constant
+// expression warns of.
 
 #include "parse-common.hh"
 
@@ -117,6 +119,39 @@ integer_constant_type(std::uint64_t value, bool decimal, suffix_t suffix)
 
 } // namespace
 
+bool
+holds(const type_t &t, exact_t v)
+{
+    const int_t &type = as< int_t >(t);
+    const int bits = type.width - (type.is_signed ? 1 : 0);
+    const exact_t least = type.is_signed ? -(exact_t(1) << bits) : 0;
+
+    return v >= least && v < (exact_t(1) << bits);
+}
+
+exact_t
+exact_value(const type_t &t, long long bits)
+{
+    const int_t &type = as< int_t >(t);
+    if (type.is_signed)
+        return bits;
+
+    if (type.width == 64)
+        return static_cast< unsigned long long >(bits);
+
+    return static_cast< std::uint32_t >(bits);
+}
+
+expr_t
+literal_of(const type_t &t, exact_t v)
+{
+    const long long bits = as< int_t >(t).width == 32 ?
+                               static_cast< std::int32_t >(v) :
+                               static_cast< long long >(v);
+
+    return make_literal(bits, view_of(t));
+}
+
 // The value from the spelling, 6.4.4.2p4, p5.  The lexer has checked
 // the form; a value past 64 bits has no type (6.4.4.2p7).  The node's
 // value is the bits its register holds, read signed at its type's
@@ -162,11 +197,7 @@ integer_constant(parser_t &p)
     if (too_large || !type)
         fail(t, "integer constant is too large for its type");
 
-    const long long bits = as< int_t >(*type).width == 32 ?
-                               static_cast< std::int32_t >(value) :
-                               static_cast< long long >(value);
-
-    return { *type, make_literal(bits, view_of(*type)) };
+    return { *type, literal_of(*type, value) };
 }
 
 // A character constant, 6.4.4.5, rcc's character_constant(): of no
@@ -187,22 +218,6 @@ character_constant(parser_t &p)
 }
 
 namespace {
-
-// A constant's value exactly, past 64 bits, where a sum, a difference
-// or a product of two 64-bit values is judged: GNU C's __int128.
-using exact_t = __int128;
-
-// Whether an integer type holds a value: two's complement over its
-// width, a signed type's top bit its sign.
-bool
-holds(const type_t &t, exact_t v)
-{
-    const int_t &type = as< int_t >(t);
-    const int bits = type.width - (type.is_signed ? 1 : 0);
-    const exact_t least = type.is_signed ? -(exact_t(1) << bits) : 0;
-
-    return v >= least && v < (exact_t(1) << bits);
-}
 
 // Whether an operation of the type t on two constants a and b takes a
 // signed result t does not hold, 6.6p4, rcc's overflows(): a sum, a

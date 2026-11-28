@@ -9,27 +9,28 @@ architecture. It leaves the details to the code.
 Of the design the tree has a thin line through every joint: a unit of
 functions and of objects, declared and defined in any order, `static`,
 `extern` or neither, at file scope or a block's `static` and `extern`;
-typedef names, declared at file scope or in a block and read wherever
-a type is; the objects of the integer types from `char` to `unsigned
-long long`, initialized by an integer constant expression or not, read
-and assigned in every expression, defined before their use, after it
-or nowhere in the unit, their data written after the functions; the
-functions of a result of any integer type, a pointer or `void` and of
-parameters of any integer type or pointers, whose locals are of the
-integer types and pointers to `int` and to such pointers, declared,
-assigned and returned, with parentheses, the casts, the unary
-operators `+ - ~ !`, `&` of a local and `sizeof`, `+ - * / % << >> & |
-^`, the comparisons, of pointers among them, `&&`, `||`, `?:` of arms
-of every integer type, the comma, the compound assignments and `++`
-and `--` of every integer type, and calls of functions of a result of
-any integer type, a pointer or `void`, to any depth, and the
-statements `if`, `else`, `switch` on every integer type with its
-`case` and `default` labels, `while`, `do`, `for` with a declaration
-or an expression first, `break`, `continue`, `goto` and labels, and
-`return` with a value or without, on both targets. Each mechanism
-below was compiled and run in a small model first; chapter 5 says what
-the models showed and chapter 6 what nothing has shown. A statement
-marked *working* is a position taken and run, not yet agreed.
+typedef names and enumerations with their tags and constants, declared
+at file scope or in a block and read wherever a type is; the objects
+of the integer types from `char` to `unsigned long long`, initialized
+by an integer constant expression or not, read and assigned in every
+expression, defined before their use, after it or nowhere in the unit,
+their data written after the functions; the functions of a result of
+any integer type, a pointer or `void` and of parameters of any integer
+type or pointers, whose locals are of the integer types and pointers
+to `int` and to such pointers, declared, assigned and returned, with
+parentheses, the casts, the unary operators `+ - ~ !`, `&` of a local
+and `sizeof`, `+ - * / % << >> & | ^`, the comparisons, of pointers
+among them, `&&`, `||`, `?:` of arms of every integer type, the comma,
+the compound assignments and `++` and `--` of every integer type, and
+calls of functions of a result of any integer type, a pointer or
+`void`, to any depth, and the statements `if`, `else`, `switch` on
+every integer type with its `case` and `default` labels, `while`,
+`do`, `for` with a declaration or an expression first, `break`,
+`continue`, `goto` and labels, and `return` with a value or without,
+on both targets. Each mechanism below was compiled and run in a small
+model first; chapter 5 says what the models showed and chapter 6 what
+nothing has shown. A statement marked *working* is a position taken
+and run, not yet agreed.
 
 ## 1. The idea
 
@@ -812,6 +813,17 @@ technique.
   scope is the outermost of the parser's scopes and holds the file's
   typedef names; its functions and its objects stay in their two maps,
   and a name is in one of the three alone.
+- A scope holds the tags of the enumerations it defines too. An
+  enumerated type is the integer type compatible with it, by clang's
+  choice, with an identity of its own, which C's compatibility reads
+  and no row does: an object, a parameter and a result of one are its
+  integer type's. An enumeration constant is a scope's name whose
+  operand is the literal of its value, an `int` where `int` holds
+  every value of its list and of the enumerated type otherwise, and a
+  use copies the literal as it copies a leaf, so no node is an
+  enumerator's. A function or an object declared again takes the
+  composite of its two types, which for an enumerated type and its
+  integer type is the integer type.
 - A block's `static` object is the unit's too. Its entry is made
   where its declaration is parsed, under its label: the function's
   name and its own, `f.s`, and from the second of the name in the
@@ -1102,6 +1114,10 @@ rows invented for the purpose.
   its classes; with the dereference's where the same three bring 28.9
   GB to 13.5.
 - GNU's `a ?: b`, which is not yet.
+- Of the declarations: a typedef name of an array or of a record; a
+  function declared through a typedef name; an enum's fixed underlying
+  type, as in rcc, and its attributes; a pointer to an enum within its
+  own list, which rcc takes.
 - The rest of the pointers: the dereference, pointer arithmetic and
   the subscript; a pointer of static storage, the address of an object
   of static storage and of a function; an operator on a pointer

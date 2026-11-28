@@ -48,7 +48,8 @@ struct operand_t
 };
 
 // What a scope holds of a name it declares, 6.2.1p4: the operand a use
-// copies, its type and its leaf (docs/typed-tree.md 4.5); whether the
+// copies, its type and its leaf (docs/typed-tree.md 4.5), an
+// enumeration constant's the literal of its value, 6.4.4.4p2; whether the
 // name has linkage, 6.2.2: a block's extern has, and a local, a
 // parameter and a block's static object have none, p6, which a block's
 // extern of the name, linked_entity(), reads; and whether the name is a
@@ -61,11 +62,18 @@ struct symbol_t
     bool type_name = false;
 };
 
-// A scope, 6.2.1p4: the file's, a block's or a parameter list's, each
-// name it declares, a view into the tokens, and what the scope holds of
-// it.  The file's holds its typedef names alone, its functions' and its
-// objects' names being parser_t's.
-using scope_t = std::unordered_map< std::string_view, symbol_t >;
+// A scope, 6.2.1p4: the file's, a block's or a parameter list's.  It
+// holds the ordinary identifiers it declares, 6.2.3p1, each a view into
+// the tokens and what the scope holds of it, the file's its typedef
+// names and enumeration constants alone, its functions' and its
+// objects' names being parser_t's; and the tags of the enumerations it
+// defines, each the enumerated type, or while its list is read the
+// type of the enum in its own list, 6.7.3.4p5.
+struct scope_t
+{
+    std::unordered_map< std::string_view, symbol_t > names = { };
+    std::unordered_map< std::string_view, type_t > tags = { };
+};
 
 // What the parser holds of a function's name in the file's scope,
 // 6.2.1p4: its type, a function_t, which a later declaration of the
@@ -142,9 +150,11 @@ struct open_switch_t
 // each goto in the order they are written, for the function's end to
 // require their labels; the function's name, and the count of its
 // block's static objects of each name, which their labels read,
-// static_label(); and the objects a block declared extern first, of
+// static_label(); the objects a block declared extern first, of
 // external linkage, which no declaration at file scope has declared
-// yet, unit_entity()'s.
+// yet, unit_entity()'s; and the count of the identities the parser has
+// given the enumerated types and the types of an enum in its own list,
+// 6.2.5p21, which identifies the next.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -168,6 +178,7 @@ struct parser_t
     std::string_view function = { };
     std::unordered_map< std::string_view, int > statics = { };
     std::unordered_map< std::string_view, object_name_t > block_entities = { };
+    int identities = 0;
 };
 
 //
@@ -236,6 +247,11 @@ sign_t sign_of(const type_t &t);
 
 // The type a pointer type points to, 6.2.5p27.
 const type_t &pointee_of(const type_t &t);
+
+// A type rcc declares and does not use yet, an enum in its own list,
+// refused at the token of its use by its words, rcc's
+// require_honoured().
+void refuse_not_yet_type(const token_t &at, const type_t &t);
 
 //
 // values
@@ -317,6 +333,25 @@ int declare(parser_t &p, const token_t &name, const type_t &type);
 operand_t integer_constant(parser_t &);
 operand_t character_constant(parser_t &);
 
+// A constant's value exactly, past 64 bits, where a sum, a difference
+// or a product of two 64-bit values is judged: GNU C's __int128.
+using exact_t = __int128;
+
+// Whether an integer type holds a value: two's complement over its
+// width, a signed type's top bit its sign.
+bool holds(const type_t &t, exact_t v);
+
+// The value of a constant of the integer type t exactly, from bits, the
+// value constant_of() reads of its node, its register's bits read signed
+// at 32 bits or more: an unsigned type's are read at its width with no
+// sign.
+exact_t exact_value(const type_t &t, long long bits);
+
+// The literal of the value v of the integer type t of 32 bits or 64,
+// which t holds: the bits its register holds, read signed at t's width,
+// so the unsigned 4294967295 is -1 (docs/typed-tree.md 4.3).
+expr_t literal_of(const type_t &t, exact_t v);
+
 // The mark of a signed overflow, 6.6p4, of an operator of the C type t,
 // the operation's, on its operands, lhs and rhs, l and r their nodes as
 // the operator reads them, rcc's folded_binary() and folded_unary():
@@ -352,12 +387,16 @@ operand_t expression(parser_t &);
 
 // What the parser holds of the declaration specifiers: the storage
 // class, static, extern, typedef or none; the first type specifier's
-// token, a typedef name's among them; and the type.
+// token, a typedef name's or an enum specifier's among them; the type;
+// and whether the type specifier is an enum specifier, which declares
+// its tag or its constants, so that a declaration of it alone, enum e {
+// A };, declares something, 6.7.1p2.
 struct specifiers_t
 {
     const token_t *storage_class;
     const token_t &specifier;
     type_t type;
+    bool tagged;
 };
 
 // A parameter as written: its first token; its name's token, or null
