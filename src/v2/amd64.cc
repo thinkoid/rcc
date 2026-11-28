@@ -1384,13 +1384,17 @@ arm(state_t &s, const expr_t &e, reg_t j)
 
 } // namespace
 
-// The join's mov at the conditional's width, max(32, width), rcc's.
+// The join's mov at the conditional's width, max(32, width), rcc's, and
+// the join's width recorded at the sign, rcc's hold() of it: the lesser
+// of the arms', an arm a mov brought there valid as the mov writes it,
+// written(), an unsigned arm moved by a movl valid to 64 bits.
 value_t
 conditional(state_t &s,
             const expr_t &cond,
             const expr_t &yes,
             const expr_t &no,
             view_t view,
+            sign_t sign,
             unsigned wanted)
 {
     const auto incoming = before_paths(s);
@@ -1404,9 +1408,11 @@ conditional(state_t &s,
     const auto named = wanted_register(s, wanted);
     const value_t first = named ? arm(s, yes, *named) : value(s, yes);
     reg_t join = reg_of(s, first);
+    int valid = held_valid(s, first, yes, sign);
     if (named && join != *named) {
         mov(s, join, *named, bits);
         join = *named;
+        valid = written(bits, sign);
     }
     release(s, first);
     jump(s, end);
@@ -1414,13 +1420,19 @@ conditional(state_t &s,
     place_label(s, other);
     const value_t second = arm(s, no, join);
     const reg_t from = reg_of(s, second);
-    if (from != join)
+    int other_valid = held_valid(s, second, no, sign);
+    if (from != join) {
         mov(s, from, join, bits);
+        other_valid = written(bits, sign);
+    }
     release(s, second);
 
     place_label(s, end);
 
-    return hold(s, join);
+    const value_t v = hold(s, join);
+    s.registers.values[v.id].joined = std::min(valid, other_valid);
+
+    return v;
 }
 
 namespace {

@@ -66,6 +66,7 @@ public:
     friend view_t view_of(const expr_t &);
     friend bool truth_value(const expr_t &);
     friend expr_t under_widening(const expr_t &);
+    friend bool is_join(const expr_t &);
     friend value_t value_in(arm64::state_t &, const expr_t &, unsigned wanted);
     friend bool takes_name(const arm64::state_t &, const expr_t &);
 
@@ -129,6 +130,10 @@ view_t view_of(const expr_t &);
 // (build-typed.hh).
 bool truth_value(const expr_t &);
 expr_t under_widening(const expr_t &);
+
+// Whether an erased value is the join of ?: as the join holds it, the
+// summary that a reader of its width asks (zoo.hh, register-stack.hh).
+bool is_join(const expr_t &);
 
 // aarch64's value for a consumer at a return's top, rcc's rvalue_in(),
 // and the summary its ?: asks of an arm before it hands an arm the

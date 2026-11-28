@@ -254,13 +254,16 @@ struct comma_t
 // footnote.  jumps says whether an arm is a truth value, truth_value()'s,
 // which makes the jump on the whole rcc's jump code on the arms,
 // conditional_branch(); the builder asks it of the arms.  The parts are
-// erased: each is reached through its own entry points.
+// erased: each is reached through its own entry points.  The sign of
+// the arms' type is data, which the width rule of the join reads, the
+// row's record of what the join is valid to (register-stack.hh).
 template< view_t V, bool jumps >
 struct conditional_t
 {
     expr_t cond;
     expr_t yes;
     expr_t no;
+    sign_t sign;
 };
 
 // c ? v() : w(), two void arms, 6.5.16p3, p6: an effect, and no value,
@@ -959,8 +962,12 @@ valid_of(const comma_t< R > &c, sign_t sign)
     return valid_of(c.rhs, sign);
 }
 // A conditional's value is held where the join holds it, valid to the
-// least of what its arms leave, as rcc's join holds it, an arm of int
-// moved there being valid to 32 bits, no less than any arm of int.
+// least of what its arms leave, as rcc's join holds it.  An arm a mov
+// brought there is valid as the mov wrote it, which no summary knows
+// before the arms are written, so the conditional's row records the
+// join's width in the state, which a reader of the value asks first,
+// held_valid() (register-stack.hh), and this summary serves a reader
+// that holds no value of it.
 template< view_t V, bool jumps >
 int
 valid_of(const conditional_t< V, jumps > &c, sign_t sign)
@@ -1030,6 +1037,41 @@ truth_value(const trunc_t< V, A > &t)
     return width(V) >= width(view_of(t.arg)) && truth_value(t.arg);
 }
 
+
+// Whether a node's value is the join of ?: as the join holds it, so that
+// the conditional's record of the join's width is the node's: the
+// conditional, and a comma and an assignment, whose value is their
+// right operand's and their value's, in the same register (3.4).  A
+// summary its readers ask through the handle, held_valid()'s; any other
+// node writes a value of its own, or one the join's width is not of,
+// a conversion's.
+template< typename T >
+constexpr bool
+is_join(const T &)
+{
+    return false;
+}
+
+template< view_t V, bool jumps >
+constexpr bool
+is_join(const conditional_t< V, jumps > &)
+{
+    return true;
+}
+
+template< typename R >
+bool
+is_join(const comma_t< R > &c)
+{
+    return is_join(c.rhs);
+}
+
+template< typename W, view_t V >
+bool
+is_join(const assign_t< W, V > &a)
+{
+    return is_join(a.value);
+}
 
 // A place is read only through its load, and a void call has no value:
 // either asked for its width is a tree the parser does not make.

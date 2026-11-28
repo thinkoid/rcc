@@ -39,8 +39,8 @@ namespace rcc {
 // through a signed overflow, 6.6p4, the mark every operator's
 // production sets, overflowed(), and a constant expression reads,
 // warn_overflowed(); and the '?' of the conditional the expression is,
-// through parentheses, or null, for the not yet of its widening,
-// conversion()'s.
+// through parentheses, or null, for the not yet of a widening of a
+// signed one, conversion()'s.
 struct operand_t
 {
     type_t type;
@@ -258,9 +258,11 @@ expr_t discarded(operand_t e);
 // nothing else calls make_conversion(): so a node that is no conversion
 // has the type its consumer converts it from, and the width rule, which
 // a widening reads by the sign of the type it converts from, is right
-// by construction (docs/typed-tree.md 4.2).  A widening of a
+// by construction (docs/typed-tree.md 4.2).  A widening of a signed
 // conditional is not yet, at its '?': rcc hands it into the arms where
-// they widen free, widens_arms(), a choice partly of the state.
+// they widen free, widens_arms(), a choice partly of the state.  An
+// unsigned one it never hands: its widening extends the join where the
+// width the join records is short (register-stack.hh).
 expr_t conversion(const operand_t &e, const type_t &t);
 
 // The value of e in the type t, rcc's convert_to(), the place an

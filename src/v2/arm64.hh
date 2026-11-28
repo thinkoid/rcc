@@ -705,6 +705,7 @@ value_t conditional(state_t &,
                     const expr_t &yes,
                     const expr_t &no,
                     view_t view,
+                    sign_t sign,
                     unsigned wanted);
 
 // A conditional's value, rcc's rvalue(): the consumer's register handed
@@ -715,7 +716,7 @@ value(state_t &s, const conditional_t< V, jumps > &c, unsigned wanted = 0)
 {
     const bool arms = takes_name(s, c.yes) && takes_name(s, c.no);
 
-    return conditional(s, c.cond, c.yes, c.no, V, arms ? wanted : 0);
+    return conditional(s, c.cond, c.yes, c.no, V, c.sign, arms ? wanted : 0);
 }
 
 // The value at a return's top, rcc's rvalue_in(): any node's value
@@ -732,7 +733,7 @@ template< view_t V, bool jumps >
 value_t
 value_in(state_t &s, const conditional_t< V, jumps > &c, unsigned wanted)
 {
-    return conditional(s, c.cond, c.yes, c.no, V, wanted);
+    return conditional(s, c.cond, c.yes, c.no, V, c.sign, wanted);
 }
 
 // The pieces of a switch's dispatch, backend.md 7.3, which the

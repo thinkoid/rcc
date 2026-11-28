@@ -90,6 +90,9 @@ struct expr_t::interface_t
     virtual bool truth_value() const = 0;
     virtual expr_t under_widening(const expr_t &self) const = 0;
 
+    // whether the value is a join of ?:, whose width the state records
+    virtual bool is_join() const = 0;
+
     // the builders: self is the handle that holds this node, which a
     // builder returns, or erases a part into, without a copy of the node
     virtual expr_t rvalue(const expr_t &self) const = 0;
@@ -252,6 +255,13 @@ expr_t
 fwd_under_widening(const T &t, const expr_t &self)
 {
     return under_widening(t, self);
+}
+
+template< typename T >
+bool
+fwd_is_join(const T &t)
+{
+    return is_join(t);
 }
 
 // The lvalue conversion of a held node, as fwd_value() finds a row.
@@ -926,6 +936,11 @@ struct expr_t::model_t final: interface_t
     expr_t under_widening(const expr_t &self) const override
     {
         return fwd_under_widening(held, self);
+    }
+
+    bool is_join() const override
+    {
+        return fwd_is_join(held);
     }
 
     expr_t rvalue(const expr_t &self) const override

@@ -52,13 +52,14 @@ value(S &s, const top_t< F > &t, unsigned wanted = 0)
 // unsigneds writes nothing, their 32-bit write valid to 64 bits, and
 // so does (long) (a < b), a truth value; (unsigned long) (unsigned) i is
 // movl %eax, %eax.  The row asks its operand's summary, as x86-64's rows
-// ask pinned_within(); a niche of each target reads a load extended.
+// ask pinned_within(), or what the join of ?: recorded, held_valid(); a
+// niche of each target reads a load extended.
 template< typename S, view_t V, view_t F, typename A >
 value_t
 value(S &s, const sext_t< V, F, A > &e, unsigned wanted = 0)
 {
     const value_t v = value(s, e.arg, wanted);
-    if (valid_of(e.arg, sign_t::signed_) >= width(V))
+    if (held_valid(s, v, e.arg, sign_t::signed_) >= width(V))
         return v;
 
     return extended(s, v, F, sign_t::signed_, V, wanted);
@@ -69,7 +70,7 @@ value_t
 value(S &s, const zext_t< V, F, A > &e, unsigned wanted = 0)
 {
     const value_t v = value(s, e.arg, wanted);
-    if (valid_of(e.arg, sign_t::unsigned_) >= width(V))
+    if (held_valid(s, v, e.arg, sign_t::unsigned_) >= width(V))
         return v;
 
     return extended(s, v, F, sign_t::unsigned_, V, wanted);

@@ -860,11 +860,14 @@ logical_or_expression(parser_t &p)
 // joined_arms() and conditional(): two void arms make a void
 // conditional, 6.5.16p3, p6; one void arm and one of a value meet in
 // none of p3's pairs, an error at the '?'; any other two are read for
-// their values, each rvalue()'s at the '?', and an arm of another type
-// than int is not yet there.  A constant condition and two constant
-// arms fold to the arm the condition picks, p5, make_conditional()'s,
-// marked overflowed where the condition or that arm was so reached; a
-// conditional that does not fold keeps its '?' for conversion().
+// their values, each rvalue()'s at the '?', and each converted to the
+// type of the usual arithmetic conversions of the two, p6, in one
+// conversion, rcc's arithmetic_conversions(), so that two narrow arms
+// make an int, and a constant arm is the constant of that type.  A
+// constant condition and two constant arms fold to the arm the
+// condition picks, p5, make_conditional()'s, marked overflowed where the
+// condition or that arm was so reached; a conditional that does not
+// fold keeps its '?' for conversion(), and an arm keeps its own.
 operand_t
 joined(const token_t &at,
        const operand_t &condition,
@@ -881,19 +884,25 @@ joined(const token_t &at,
     if (is< void_t >(yes.type) || is< void_t >(no.type))
         fail(at, "void and non-void operands in conditional expression");
 
-    expr_t y = rvalue(at, yes);
-    expr_t n = rvalue(at, no);
-    if (yes.type != int_type() || no.type != int_type())
-        not_yet(at, "'?:' with an arm whose type is not 'int'");
+    const operand_t y { .type = yes.type,
+                        .node = rvalue(at, yes),
+                        .question = yes.question };
+    const operand_t n { .type = no.type,
+                        .node = rvalue(at, no),
+                        .question = no.question };
+    const type_t t = common_type(y.type, n.type);
+    expr_t first = convert_to(y, t);
+    expr_t second = convert_to(n, t);
 
     const auto c = constant_of(cond);
-    const bool folded = c && constant_of(y) && constant_of(n);
+    const bool folded = c && constant_of(first) && constant_of(second);
     const bool marked =
         folded && (condition.overflowed || (*c != 0 ? yes : no).overflowed);
 
-    return { .type = int_type(),
-             .node = make_conditional(std::move(cond), std::move(y),
-                                      std::move(n), view_t::i32),
+    return { .type = t,
+             .node =
+                 make_conditional(std::move(cond), std::move(first),
+                                  std::move(second), view_of(t), sign_of(t)),
              .overflowed = marked,
              .question = folded ? nullptr : &at };
 }

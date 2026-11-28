@@ -1933,13 +1933,14 @@ value_t conditional(state_t &,
                     const expr_t &yes,
                     const expr_t &no,
                     view_t view,
+                    sign_t sign,
                     unsigned wanted);
 
 template< view_t V, bool jumps >
 value_t
 value(state_t &s, const conditional_t< V, jumps > &c, unsigned wanted = 0)
 {
-    return conditional(s, c.cond, c.yes, c.no, V, wanted);
+    return conditional(s, c.cond, c.yes, c.no, V, c.sign, wanted);
 }
 
 // The pieces of a switch's dispatch, backend.md 7.3, which the

@@ -17,16 +17,16 @@ functions of a result of any integer type or `void` and of parameters
 of any integer type, whose locals are of the integer types, declared,
 assigned and returned, with parentheses, the casts, the unary
 operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
-`||`, `?:` of `int` arms, the comma, the compound assignments and `++`
-and `--` of every integer type, and calls of functions of a result of
-any integer type or `void`, to any depth, and the statements `if`,
-`else`, `switch` on every integer type with its `case` and `default`
-labels, `while`, `do`, `for` with a declaration or an expression
-first, `break`, `continue`, `goto` and labels, and `return` with a
-value or without, on both targets. Each mechanism below was compiled
-and run in a small model first; chapter 5 says what the models showed
-and chapter 6 what nothing has shown. A statement marked *working* is
-a position taken and run, not yet agreed.
+`||`, `?:` of arms of every integer type, the comma, the compound
+assignments and `++` and `--` of every integer type, and calls of
+functions of a result of any integer type or `void`, to any depth, and
+the statements `if`, `else`, `switch` on every integer type with its
+`case` and `default` labels, `while`, `do`, `for` with a declaration
+or an expression first, `break`, `continue`, `goto` and labels, and
+`return` with a value or without, on both targets. Each mechanism
+below was compiled and run in a small model first; chapter 5 says what
+the models showed and chapter 6 what nothing has shown. A statement
+marked *working* is a position taken and run, not yet agreed.
 
 ## 1. The idea
 
@@ -386,7 +386,14 @@ the jump are the ancestor's `regtab`, `efftab` and `cctab`.
   aarch64 hands each arm the consumer's register only where both arms
   are certain to write it, `takes_name()`, a summary of that target,
   and at a return's top always, through an entry point of its own,
-  `value_in`.
+  `value_in`. The row records in the state the width the join is valid
+  to, at the sign of the arms' type, which is data of the node: the
+  lesser of the arms', an arm a `mov` brought there valid as the `mov`
+  wrote it. No summary knows which arm moved before the arms are
+  written. So a reader that holds a value asks `held_valid()`: the
+  record where the value's node is the join, `is_join()`, a `?:` or a
+  comma or an assignment whose value is one, and the node's summary
+  otherwise. The widenings and the index of a `switch`'s table ask it.
 - An entry point carries a child's best form to a parent that does
   not know the child's type. In `if (a & 1) break;` the statement is
   `if_t< break_t >`, its condition erased, and x86-64's `testl $1,
@@ -790,9 +797,10 @@ technique.
   whether the function calls, which moves `rsp` below any frame; the
   frame. A value held across a call is state: the call's row spills
   every held value at its start and asks the tree nothing. The state
-  holds no width of a value: what a held value's register is valid to
-  is its node's summary (4.2). It holds the names of the objects the
-  unit defines, which a global's address reads.
+  holds no width of a value but one, the width the join of a `?:` is
+  valid to (3.4): what any other held value's register is valid to is
+  its node's summary (4.2). It holds the names of the objects the unit
+  defines, which a global's address reads.
 
 ### 4.7 Two targets
 
@@ -906,6 +914,8 @@ each became.
 | `zero_compared()` | the operand's own entry point, `value_branch` |
 | `truth_value()`, `jumps_on_arms()` | a summary both targets read, and the parameter `jumps` of `conditional_t` |
 | `under_widening()` | a question to the handle of the same name, which the jump on the arms asks |
+| `arithmetic_conversions()` of a `?:`'s arms | the parser's `joined()`, one `convert_to()` an arm |
+| the join's `min(valid, other_valid)` | the join's record in the state, read by `held_valid()` |
 | `takes_name()`, `rvalue_in()` | aarch64's summary and its entry point `value_in` |
 | `body_target()`, `target_of()`, an `if` of one jump | the category of the types that name their label, and the then part's type, `if_t< J >`, which the builder finds through the model |
 | `user_label()` | the state's labels of the C labels met, taken by a `goto`'s `label_of()` and by the label's own row |
@@ -1000,12 +1010,11 @@ rows invented for the purpose.
   steps, the compound assignments and `?:` it takes 131 and 13.9; the
   compound assignments of every type, 650 node types where there were
   338, bring the peak to 14.4 GB. Pointers bring a third where.
-- A widening of a `?:`'s value, rcc's `widens_arms()`. It is not yet,
-  and is refused by the `?` the parser's operand carries, through
-  any operator with a constant operand, which may be an identity: so
-  `(a ? b : c) + 5` widened is refused where rcc compiles it. GNU's
-  `a ?: b` is not yet.
-- The other integer types under `?:`: the arms' conversions.
+- A widening of a signed `?:`'s value, rcc's `widens_arms()`. It is
+  not yet, and is refused by the `?` the parser's operand carries,
+  through any operator with a constant operand, which may be an
+  identity: so `(a ? b : c) + 5` widened is refused where rcc compiles
+  it. GNU's `a ?: b` is not yet.
 - `({ })`. It waits until the concepts around it are clear.
 - Two targets that want shapes of one subtree that do not nest. The
   address family is where to look.

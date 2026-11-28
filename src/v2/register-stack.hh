@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "operators.hh"
+
 #include <cstddef>
 #include <map>
 #include <optional>
@@ -38,8 +40,11 @@ struct value_t
 
 // Where a held value is: its register, or none for a value spilled,
 // whose slot's displacement is spill; whether it is held still, live,
-// until it is consumed; and across, the count of the branches around
-// the row now generated that it is held across, incoming_t's.
+// until it is consumed; across, the count of the branches around the
+// row now generated that it is held across, incoming_t's; and for the
+// join of ?:, joined, the width it is valid to at the conditional's
+// sign, which the moves into the join decide at generation and no
+// summary knows (docs/typed-tree.md 4.2), 0 for any other value.
 template< typename R >
 struct held_t
 {
@@ -47,6 +52,7 @@ struct held_t
     int spill = 0;
     bool live = true;
     int across = 0;
+    int joined = 0;
 };
 
 // The state's record: the value each held register holds, by the
@@ -88,7 +94,8 @@ spill(S &s, R r)
 
     store_spill(s, r, displacement);
 
-    s.registers.values[id] = { .reg = std::nullopt, .spill = displacement };
+    s.registers.values[id].reg = std::nullopt;
+    s.registers.values[id].spill = displacement;
     s.registers.owner.erase(r);
 }
 
@@ -135,6 +142,22 @@ reg_of(S &s, value_t v, unsigned avoid = 0)
     s.registers.owner.emplace(r, v.id);
 
     return r;
+}
+
+// The width the held value v of the node e is valid to at the sign,
+// the width rule (zoo.hh): what the join of ?: recorded where e is that
+// join, is_join()'s, the conditional itself or a comma or an assignment
+// whose value it is, held in the register the join left it in, and the
+// node's summary, valid_of(), otherwise.  rcc keeps the width with
+// every held value; the tree asks the subtree, but for the one fact a
+// subtree does not hold, which arm a mov brought into a join.
+template< typename S, typename E >
+int
+held_valid(const S &s, value_t v, const E &e, sign_t sign)
+{
+    const int joined = s.registers.values[v.id].joined;
+
+    return joined && is_join(e) ? joined : valid_of(e, sign);
 }
 
 // The value is consumed: its register, if it has one, is free.

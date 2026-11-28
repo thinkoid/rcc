@@ -488,7 +488,8 @@ generate(S &s, const switch_t< form, V, defaulted, broken > &sw)
 
     const value_t v = value(s, sw.cond);
     if constexpr (form == dispatch_t::direct)
-        direct_switch(s, v, valid_of(sw.cond, sw.sign), sw.cases, V, otherwise);
+        direct_switch(s, v, held_valid(s, v, sw.cond, sw.sign), sw.cases, V,
+                      otherwise);
     else if constexpr (form == dispatch_t::simple)
         simple_switch(s, v, sw.cases, V, otherwise);
     else if constexpr (form == dispatch_t::hash)

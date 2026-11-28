@@ -129,6 +129,12 @@ under_widening(const expr_t &e)
     return e.self->under_widening(e);
 }
 
+bool
+is_join(const expr_t &e)
+{
+    return e.self->is_join();
+}
+
 // A statement holds no value past its end, c1-statements.hh's check.
 void
 generate(amd64::state_t &s, const stmt_t &statement)
@@ -284,9 +290,10 @@ make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs)
 // The fold of three constants, the arm the condition picks, as rcc
 // folds it, and otherwise the node, of the jump form the arms' summary
 // truth_value() says, asked of each through its handle once (3.3), and
-// crossed into the node's parameter with the view (principle 6).
+// crossed into the node's parameter with the view (principle 6), an
+// operation's, since the arms are of a promoted type; the sign is data.
 expr_t
-make_conditional(expr_t cond, expr_t yes, expr_t no, view_t view)
+make_conditional(expr_t cond, expr_t yes, expr_t no, view_t view, sign_t sign)
 {
     const auto c = constant_of(cond);
     if (c && constant_of(yes) && constant_of(no))
@@ -294,11 +301,11 @@ make_conditional(expr_t cond, expr_t yes, expr_t no, view_t view)
 
     const bool jumps = truth_value(yes) || truth_value(no);
 
-    return cross(view, [&]< view_t V >() {
+    return cross_operation(view, [&]< view_t V >() {
         if (jumps)
-            return expr_t(conditional_t< V, true > { cond, yes, no });
+            return expr_t(conditional_t< V, true > { cond, yes, no, sign });
 
-        return expr_t(conditional_t< V, false > { cond, yes, no });
+        return expr_t(conditional_t< V, false > { cond, yes, no, sign });
     });
 }
 

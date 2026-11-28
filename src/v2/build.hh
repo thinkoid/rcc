@@ -77,8 +77,10 @@ expr_t make_compound(binary_op_t op, view_t view, expr_t place, expr_t value);
 expr_t make_step(step_op_t op, expr_t place);
 
 // c ? y : n, 6.5.16, of a condition read and of two arms of the view
-// converted to their common type, and of two void arms, p3.
-expr_t make_conditional(expr_t cond, expr_t yes, expr_t no, view_t view);
+// and the sign converted to their common type, p6, and of two void
+// arms, p3.
+expr_t
+make_conditional(expr_t cond, expr_t yes, expr_t no, view_t view, sign_t sign);
 expr_t make_conditional_void(expr_t cond, expr_t yes, expr_t no);
 
 // lhs, rhs, 6.5.18, of a left operand evaluated for its effect and a
